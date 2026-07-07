@@ -1,0 +1,115 @@
+"""QSettings-based application configuration."""
+
+from pathlib import Path
+
+from PySide6.QtCore import QSettings, QObject, Signal, Slot
+
+
+class AppSettings(QObject):
+    """Persistent application settings via QSettings.
+
+    Organization: justllama, Application: justllama.
+    """
+
+    settings_changed = Signal(str, object)  # key, value
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._s = QSettings("justllama", "justllama")
+        # Set defaults on first run
+        self._set_defaults()
+
+    def _set_defaults(self):
+        defaults = {
+            "server/binary": str(Path.home() / ".local" / "bin" / "llama-server-cuda"),
+            "server/port": 8080,
+            "server/model_path": "",
+            "server/ctx_size": 4096,
+            "server/n_gpu_layers": 99,
+            "server/threads": -1,
+            "server/batch_size": 512,
+            "server/flash_attn": True,
+            "models/directory": str(Path.home() / "Documents" / "models"),
+            "rag/enabled": False,
+            "rag/chunk_size": 512,
+            "rag/chunk_overlap": 50,
+            "rag/vectorstore_path": str(
+                Path.home() / ".local" / "share" / "justllama" / "vectordb"
+            ),
+            "memory/enabled": False,
+            "memory/db_path": str(
+                Path.home() / ".local" / "share" / "justllama" / "memory.db"
+            ),
+            "memory/max_short_term": 50,
+        }
+        for key, default in defaults.items():
+            if self._s.value(key) is None:
+                self._s.setValue(key, default)
+
+    # --- Typed accessors ---
+
+    @Slot(str, result=str)
+    def get_string(self, key: str) -> str:
+        return str(self._s.value(key, ""))
+
+    @Slot(str, result=int)
+    def get_int(self, key: str) -> int:
+        return int(self._s.value(key, 0))
+
+    @Slot(str, result=bool)
+    def get_bool(self, key: str) -> bool:
+        return str(self._s.value(key, "false")).lower() in ("true", "1", "yes")
+
+    @Slot(str, str)
+    def set_string(self, key: str, value: str):
+        self._s.setValue(key, value)
+        self.settings_changed.emit(key, value)
+
+    @Slot(str, int)
+    def set_int(self, key: str, value: int):
+        self._s.setValue(key, value)
+        self.settings_changed.emit(key, value)
+
+    @Slot(str, bool)
+    def set_bool(self, key: str, value: bool):
+        self._s.setValue(key, value)
+        self.settings_changed.emit(key, value)
+
+    # --- Convenience properties ---
+
+    @property
+    def server_port(self) -> int:
+        return self.get_int("server/port")
+
+    @property
+    def model_path(self) -> str:
+        return self.get_string("server/model_path")
+
+    @property
+    def models_directory(self) -> str:
+        return self.get_string("models/directory")
+
+    @property
+    def rag_enabled(self) -> bool:
+        return self.get_bool("rag/enabled")
+
+    @property
+    def memory_enabled(self) -> bool:
+        return self.get_bool("memory/enabled")
+
+    def get_all_server_config(self) -> dict:
+        """Return all server-related settings as a dict."""
+        return {
+            "binary": self.get_string("server/binary"),
+            "model_path": self.get_string("server/model_path"),
+            "port": self.get_int("server/port"),
+            "ctx_size": self.get_int("server/ctx_size"),
+            "n_gpu_layers": self.get_int("server/n_gpu_layers"),
+            "threads": self.get_int("server/threads"),
+            "batch_size": self.get_int("server/batch_size"),
+            "flash_attn": self.get_bool("server/flash_attn"),
+        }
+
+    @Slot()
+    def sync(self):
+        self._s.sync()

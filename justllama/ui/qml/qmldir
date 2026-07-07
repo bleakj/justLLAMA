@@ -1,0 +1,7 @@
+module justllama.ui.qml
+Main 1.0 Main.qml
+ChatView 1.0 ChatView.qml
+ModelBrowser 1.0 ModelBrowser.qml
+SettingsView 1.0 SettingsView.qml
+RAGView 1.0 RAGView.qml
+MemoryView 1.0 MemoryView.qml
