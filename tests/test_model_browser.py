@@ -91,8 +91,13 @@ def test_get_model(browser, tmp_path):
 
 
 def test_get_model_missing(browser):
-    """get_model() returns None for a path that does not exist."""
-    assert browser.get_model("/nonexistent/model.gguf") is None
+    """get_model() returns an empty dict when the path does not exist.
+
+    Returns {} instead of None so that QML can safely index into the result
+    without triggering undefined-property crashes.
+    """
+    result = browser.get_model("/nonexistent/model.gguf")
+    assert result == {}
 
 
 # ---------------------------------------------------------------------------

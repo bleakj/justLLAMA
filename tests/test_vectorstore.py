@@ -16,13 +16,6 @@ from justllama.rag.vectorstore import VectorStore
 # Fixtures
 # ---------------------------------------------------------------------------
 
-@pytest.fixture(scope="session")
-def qapp():
-    """Session-scoped QApplication — required for QObject / Signal lifecycle."""
-    app = QApplication.instance()
-    if app is None:
-        app = QApplication([])
-    return app
 
 
 @pytest.fixture()
@@ -115,7 +108,7 @@ class TestAddDocuments:
         mock_col.count.return_value = 0
 
         chunks = json.dumps([
-            {"text": "Alpha", "metadata": {"src": "a"}},
+            {"text": "Alpha", "src": "a"},
         ])
         store.add_documents(chunks)
 
@@ -164,7 +157,7 @@ class TestAddDocuments:
         mock_col.count.return_value = 0
 
         chunks = json.dumps([
-            {"text": "test", "metadata": {"tags": ["a", "b"]}},
+            {"text": "test", "tags": ["a", "b"]},
         ])
         store.add_documents(chunks)
         call_kwargs = mock_col.add.call_args[1]

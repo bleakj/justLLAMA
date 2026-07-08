@@ -11,7 +11,7 @@ class AppSettings(QObject):
     Organization: justllama, Application: justllama.
     """
 
-    settings_changed = Signal(str, object)  # key, value
+    settings_changed = Signal(str, 'QVariant')  # key, value
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -29,6 +29,10 @@ class AppSettings(QObject):
             "server/threads": -1,
             "server/batch_size": 512,
             "server/flash_attn": True,
+            "server/ubatch_size": 512,
+            "server/mmap": True,
+            "server/mlock": False,
+            "server/numa": "",
             "models/directory": str(Path.home() / "Documents" / "models"),
             "rag/enabled": False,
             "rag/chunk_size": 512,
@@ -41,6 +45,10 @@ class AppSettings(QObject):
                 Path.home() / ".local" / "share" / "justllama" / "memory.db"
             ),
             "memory/max_short_term": 50,
+            "chat/mode": "chat",
+            "council/model_1": "",
+            "council/model_2": "",
+            "council/model_3": "",
         }
         for key, default in defaults.items():
             if self._s.value(key) is None:
@@ -107,7 +115,12 @@ class AppSettings(QObject):
             "n_gpu_layers": self.get_int("server/n_gpu_layers"),
             "threads": self.get_int("server/threads"),
             "batch_size": self.get_int("server/batch_size"),
+            "ubatch_size": self.get_int("server/ubatch_size"),
             "flash_attn": self.get_bool("server/flash_attn"),
+            "mmap": self.get_bool("server/mmap"),
+            "mlock": self.get_bool("server/mlock"),
+            "numa": self.get_string("server/numa"),
+            "extra_args": [],
         }
 
     @Slot()

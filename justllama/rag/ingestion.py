@@ -90,6 +90,8 @@ def chunk_text(
     Returns:
         List of Chunk objects.
     """
+    if chunk_overlap >= chunk_size:
+        chunk_overlap = chunk_size // 2
     if not text or not text.strip():
         return []
 
@@ -129,6 +131,29 @@ def chunk_text(
 
     if current:
         chunks.append(Chunk(text=current, metadata={**meta, "chunk_index": len(chunks)}))
+
+    # Add overlap between consecutive chunks
+    if chunk_overlap > 0 and len(chunks) > 1:
+        for i in range(1, len(chunks)):
+            prev_text = chunks[i - 1].text
+            overlap = prev_text[-chunk_overlap:]
+            # Try to break at a word boundary
+            first_space = overlap.find(' ')
+            if 0 < first_space < len(overlap) - 1:
+                overlap = overlap[first_space + 1:]
+            merged = overlap + chunks[i].text
+            # Trim to word boundary if merged exceeds chunk_size
+            if len(merged) > chunk_size:
+                trimmed = merged[:chunk_size]
+                last_space = trimmed.rfind(' ')
+                if last_space > 0:
+                    merged = trimmed[:last_space]
+                else:
+                    merged = trimmed
+            chunks[i] = Chunk(
+                text=merged,
+                metadata={**chunks[i].metadata, "chunk_index": i}
+            )
 
     return chunks
 

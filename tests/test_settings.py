@@ -162,7 +162,8 @@ class TestGetAllServerConfig:
         cfg = settings.get_all_server_config()
         expected_keys = {
             "binary", "model_path", "port", "ctx_size",
-            "n_gpu_layers", "threads", "batch_size", "flash_attn",
+            "n_gpu_layers", "threads", "batch_size", "ubatch_size",
+            "flash_attn", "mmap", "mlock", "numa", "extra_args",
         }
         assert set(cfg.keys()) == expected_keys
 
@@ -251,6 +252,14 @@ class TestDefaults:
 
     def test_default_max_short_term(self, fresh_settings):
         assert fresh_settings.get_int("memory/max_short_term") == 50
+
+    def test_default_chat_mode(self, fresh_settings):
+        assert fresh_settings.get_string("chat/mode") == "chat"
+
+    def test_default_council_models(self, fresh_settings):
+        assert fresh_settings.get_string("council/model_1") == ""
+        assert fresh_settings.get_string("council/model_2") == ""
+        assert fresh_settings.get_string("council/model_3") == ""
 
     def test_server_port_property_uses_default(self, fresh_settings):
         assert fresh_settings.server_port == 8080

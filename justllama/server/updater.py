@@ -150,7 +150,11 @@ class Updater(QObject):
 
         self.install_started.emit()
 
-        script = self._build_install_script()
+        # Capture the current interpreter so the install script runs against
+        # the same Python (handles venvs, system installs, etc.). We embed
+        # the resolved path into the script at generation time.
+        import sys
+        script = self._build_install_script(sys.executable)
         script_path = self._download_path.parent / "install.sh"
         script_path.write_text(script)
         script_path.chmod(0o755)
@@ -187,7 +191,7 @@ class Updater(QObject):
         else:
             self.download_error.emit("Download failed")
 
-    def _build_install_script(self) -> str:
+    def _build_install_script(self, python_exe: str = "python3") -> str:
         tarball = self._download_path
         work_dir = tarball.parent
         tag = self._latest_version
@@ -198,6 +202,7 @@ TARBALL="{tarball}"
 WORKDIR="{work_dir}"
 TAG="{tag}"
 APP_DIR="$(dirname "$(readlink -f "$0")")/../.."
+PYTHON_EXE="{python_exe}"
 
 echo "=== justLLAMA Updater ==="
 echo "Installing llama.cpp $TAG ..."
@@ -222,7 +227,7 @@ rm -rf "llama.cpp-$TAG" "$TARBALL"
 
 # Relaunch justLLAMA
 cd "$APP_DIR"
-nohup python3 -m justllama > /dev/null 2>&1 &
+nohup "$PYTHON_EXE" -m justllama > /dev/null 2>&1 &
 
 echo "Done! justLLAMA will reopen shortly."
 """

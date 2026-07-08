@@ -49,10 +49,6 @@ class MemoryManager(QObject):
         return self._enabled
 
     @Slot(str, str)
-    def add_user_message(self, role: str, content: str):
-        """Add a message to short-term memory."""
-        self._short_term.add_message(role, content)
-    @Slot(str, str)
     def add_message(self, role: str, content: str):
         """Add a message to short-term memory (QML-friendly alias)."""
         self._short_term.add_message(role, content)
@@ -128,7 +124,6 @@ class MemoryManager(QObject):
     @Slot(result=str)
     def list_all_memories(self) -> str:
         """List all long-term memories (QML-friendly)."""
-        import json
         return json.dumps(self._long_term.list_all())
 
     @Slot(str, result=str)
@@ -136,10 +131,13 @@ class MemoryManager(QObject):
         """List memories by category (QML-friendly)."""
         return self._long_term.list_by_category(category)
 
-    @Slot(str)
-    def forget_memory(self, memory_id: str):
-        """Delete a memory by ID (QML-friendly)."""
-        self._long_term.forget(memory_id)
+    @Slot(str, result=bool)
+    def forget_memory(self, memory_id: str) -> bool:
+        """Delete a memory by ID (QML-friendly).
+        
+        Returns True if a memory was actually deleted.
+        """
+        return self._long_term.forget(memory_id)
 
     @Slot(result=str)
     def stats(self) -> str:

@@ -75,6 +75,11 @@ class LongTermMemory(QObject):
         """)
         self._conn.commit()
 
+    def _ensure_conn(self):
+        """Re-initialize connection if it was closed."""
+        if self._conn is None:
+            self._init_db()
+
     @Slot(str, str, result=str)
     def store(self, content: str, category: str = "general") -> str:
         """Store a new memory.
@@ -86,13 +91,23 @@ class LongTermMemory(QObject):
         Returns:
             Memory ID.
         """
-        memory_id = str(uuid.uuid4())[:8]
+        self._ensure_conn()
+        memory_id = str(uuid.uuid4())
         now = time.time()
-        self._conn.execute(
-            "INSERT INTO memories (id, content, category, created_at, accessed_at, access_count) "
-            "VALUES (?, ?, ?, ?, ?, 0)",
-            (memory_id, content, category, now, now),
-        )
+        try:
+            self._conn.execute(
+                "INSERT INTO memories (id, content, category, created_at, accessed_at, access_count) "
+                "VALUES (?, ?, ?, ?, ?, 0)",
+                (memory_id, content, category, now, now),
+            )
+        except sqlite3.IntegrityError:
+            # Collision — extremely unlikely with full UUID, but retry once
+            memory_id = str(uuid.uuid4())
+            self._conn.execute(
+                "INSERT INTO memories (id, content, category, created_at, accessed_at, access_count) "
+                "VALUES (?, ?, ?, ?, ?, 0)",
+                (memory_id, content, category, now, now),
+            )
         self._conn.commit()
         self.memory_stored.emit(memory_id)
         return memory_id
@@ -108,6 +123,7 @@ class LongTermMemory(QObject):
         Returns:
             JSON string — list of memory dicts.
         """
+        self._ensure_conn()
         import json
 
         try:
@@ -134,7 +150,7 @@ class LongTermMemory(QObject):
                     "category": row["category"],
                     "created_at": row["created_at"],
                     "accessed_at": row["accessed_at"],
-                    "access_count": row["access_count"],
+                    "access_count": row["access_count"] + 1,
                 })
             self._conn.commit()
             return json.dumps(results)
@@ -154,6 +170,7 @@ class LongTermMemory(QObject):
     @Slot(str, result=bool)
     def forget(self, memory_id: str) -> bool:
         """Delete a memory by ID."""
+        self._ensure_conn()
         cursor = self._conn.execute(
             "DELETE FROM memories WHERE id = ?", (memory_id,)
         )
@@ -166,12 +183,14 @@ class LongTermMemory(QObject):
     @Slot(result=int)
     def count(self) -> int:
         """Total number of stored memories."""
+        self._ensure_conn()
         row = self._conn.execute("SELECT COUNT(*) FROM memories").fetchone()
         return row[0]
 
     @Slot(str, result=str)
     def list_by_category(self, category: str) -> str:
         """List memories in a category."""
+        self._ensure_conn()
         import json
         rows = self._conn.execute(
             "SELECT id, content, category, created_at, accessed_at, access_count "
@@ -184,6 +203,7 @@ class LongTermMemory(QObject):
     @Slot(result=list)
     def list_all(self) -> list[dict]:
         """List all memories."""
+        self._ensure_conn()
         rows = self._conn.execute(
             "SELECT id, content, category, created_at, accessed_at, access_count "
             "FROM memories ORDER BY created_at DESC"
@@ -193,6 +213,7 @@ class LongTermMemory(QObject):
     @Slot()
     def clear(self):
         """Delete all memories."""
+        self._ensure_conn()
         self._conn.execute("DELETE FROM memories")
         self._conn.commit()
 

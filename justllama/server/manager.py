@@ -3,7 +3,6 @@
 import shutil
 import signal
 import subprocess
-import sys
 import time
 from pathlib import Path
 
@@ -30,6 +29,37 @@ class _ServerLogReader(QThread):
     def stop(self):
         self._running = False
 
+class _HealthWorker(QThread):
+    """Background thread: poll /health until server is ready."""
+
+    success = Signal(int)   # port
+    failure = Signal(str)   # error message
+
+    def __init__(self, port: int, process: subprocess.Popen, parent=None):
+        super().__init__(parent)
+        self._port = port
+        self._process = process
+
+    def run(self):
+        import urllib.request
+
+        health_url = f"http://127.0.0.1:{self._port}/health"
+        for _attempt in range(30):
+            time.sleep(1)
+            if self._process.poll() is not None:
+                self.failure.emit(
+                    f"Server exited with code {self._process.returncode}"
+                )
+                return
+            try:
+                resp = urllib.request.urlopen(health_url, timeout=2)
+                if resp.status == 200:
+                    self.success.emit(self._port)
+                    return
+            except Exception:
+                pass
+        self.failure.emit("Server did not become healthy within 30s")
+
 
 class ServerManager(QObject):
     """Manages the llama-server subprocess lifecycle.
@@ -51,6 +81,7 @@ class ServerManager(QObject):
         self._process: subprocess.Popen | None = None
         self._stdout_reader: _ServerLogReader | None = None
         self._stderr_reader: _ServerLogReader | None = None
+        self._health_worker: _HealthWorker | None = None
         self._port = 8080
 
     @Slot(result=bool)
@@ -76,6 +107,14 @@ class ServerManager(QObject):
         Returns:
             True if started successfully, False otherwise.
         """
+        # Pre-validate numeric arguments before any side effects
+        if not (1024 <= port <= 65535):
+            self.server_error.emit(f"Port must be 1024-65535, got {port}")
+            return False
+        if ctx_size < 256:
+            self.server_error.emit(f"context size must be >= 256, got {ctx_size}")
+            return False
+
         if self.is_running():
             self.log_line.emit("Server already managed by us, stopping first...")
             self.stop()
@@ -103,7 +142,6 @@ class ServerManager(QObject):
         ]
         if threads > 0:
             cmd.extend(["--threads", str(threads)])
-
         # Set env so shared libs next to the binary are found (CUDA, etc.)
         import os
         env = os.environ.copy()
@@ -133,44 +171,48 @@ class ServerManager(QObject):
         self._stderr_reader.line_read.connect(self.log_line)
         self._stdout_reader.start()
         self._stderr_reader.start()
-        # Wait for server to be healthy (model loading can take seconds)
-        import urllib.request
-        health_url = f"http://127.0.0.1:{port}/health"
-        for attempt in range(30):
-            time.sleep(1)
-            if self._process.poll() is not None:
-                self.server_error.emit(
-                    f"Server exited with code {self._process.returncode}"
-                )
-                self._cleanup()
-                return False
+        # Health-check in a background thread (non-blocking for the UI)
+        self._health_worker = _HealthWorker(port, self._process, self)
+        self._health_worker.success.connect(self._on_health_success)
+        self._health_worker.failure.connect(self._on_health_failure)
+        self._health_worker.start()
+        return True
+
+    def _on_health_success(self, port: int):
+        """Called when the health-check worker confirms the server is up."""
+        self._health_worker = None
+        self.server_started.emit(port)
+
+    def _on_health_failure(self, msg: str):
+        """Called when the health-check worker gives up."""
+        self._health_worker = None
+        self.server_error.emit(msg)
+        # Kill the orphaned process if still alive
+        if self._process and self._process.poll() is None:
             try:
-                resp = urllib.request.urlopen(health_url, timeout=2)
-                if resp.status == 200:
-                    self.server_started.emit(port)
-                    return True
+                self._process.kill()
+                self._process.wait(timeout=3)
             except Exception:
                 pass
-        self.server_error.emit("Server did not become healthy within 30s")
         self._cleanup()
-        return False
 
     @Slot(result=bool)
     def stop(self) -> bool:
-        """Stop the server with SIGTERM → wait 5s → SIGKILL."""
-        if not self.is_running():
-            self.server_stopped.emit()
-            return True
+        """Stop the server with SIGTERM → wait 5s → SIGKILL.
 
-        try:
-            self._process.send_signal(signal.SIGTERM)
+        Always releases resources (log readers, health worker, pipes) even
+        if the process is already gone — this prevents lingering threads.
+        """
+        if self.is_running():
             try:
-                self._process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self._process.kill()
-                self._process.wait(timeout=3)
-        except (ProcessLookupError, OSError):
-            pass  # Already dead
+                self._process.send_signal(signal.SIGTERM)
+                try:
+                    self._process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    self._process.kill()
+                    self._process.wait(timeout=3)
+            except (ProcessLookupError, OSError):
+                pass  # Already dead
 
         self._cleanup()
         self.server_stopped.emit()
@@ -187,9 +229,25 @@ class ServerManager(QObject):
     @Slot(result=int)
     def port(self) -> int:
         return self._port
+    @Slot(result='QVariant')
+    def get_process(self):
+        """Return the current server process (or None)."""
+        return self._process
 
     def _cleanup(self):
         """Clean up log readers and process reference."""
+        # Close pipes to unblock any reader thread stuck on readline()
+        if self._process:
+            try:
+                if self._process.stdout:
+                    self._process.stdout.close()
+            except Exception:
+                pass
+            try:
+                if self._process.stderr:
+                    self._process.stderr.close()
+            except Exception:
+                pass
         if self._stdout_reader:
             self._stdout_reader.stop()
             self._stdout_reader.wait(2000)
@@ -198,7 +256,11 @@ class ServerManager(QObject):
             self._stderr_reader.stop()
             self._stderr_reader.wait(2000)
             self._stderr_reader = None
+        if self._health_worker:
+            self._health_worker.terminate()
+            self._health_worker = None
         self._process = None
+
     def _kill_port(self, port: int):
         """Kill any process listening on the given port (Linux)."""
         try:
@@ -211,26 +273,63 @@ class ServerManager(QObject):
             if result != 0:
                 return  # Port is free
 
-            # Port in use — find and kill the process
             self.log_line.emit(f"Port {port} is occupied, killing existing process...")
             import subprocess
-            # Find PID using the port
-            out = subprocess.run(
-                ["fuser", str(port) + "/tcp"],
-                capture_output=True, text=True, timeout=5
-            )
+            # Find PID using the port. fuser is part of psmisc on most
+            # distros; we degrade gracefully if it isn't available.
+            try:
+                out = subprocess.run(
+                    ["fuser", str(port) + "/tcp"],
+                    capture_output=True, text=True, timeout=5,
+                )
+            except FileNotFoundError:
+                self.log_line.emit(
+                    "fuser not found; cannot identify port owner. "
+                    "Install psmisc or free the port manually."
+                )
+                return
+            import os
             for pid_str in out.stdout.split():
-                pid = int(pid_str)
+                try:
+                    pid = int(pid_str)
+                except ValueError:
+                    self.log_line.emit(
+                        f"Skipping non-numeric PID from fuser: {pid_str!r}"
+                    )
+                    continue
                 self.log_line.emit(f"Killing PID {pid} on port {port}")
                 try:
-                    import os
                     os.kill(pid, 15)  # SIGTERM
-                    time.sleep(1)
-                    # Force kill if still alive
-                    os.kill(pid, 0)  # Check if alive
-                    os.kill(pid, 9)  # SIGKILL
-                except (ProcessLookupError, PermissionError):
+                except ProcessLookupError:
+                    continue  # already gone
+                except PermissionError:
+                    self.log_line.emit(
+                        f"PID {pid} not owned by us; cannot kill (need sudo)."
+                    )
+                    continue
+                time.sleep(1)
+                # Verify still alive; only then escalate to SIGKILL
+                try:
+                    os.kill(pid, 0)
+                    try:
+                        os.kill(pid, 9)  # SIGKILL
+                    except PermissionError:
+                        self.log_line.emit(
+                            f"PID {pid} not owned by us; cannot force-kill."
+                        )
+                except ProcessLookupError:
+                    pass  # died from SIGTERM — fine
+                except PermissionError:
+                    # Process exists but became owned-by-other-user; skip.
                     pass
+            # If fuser returned no usable PIDs, surface why it gave up
+            if not out.stdout.strip() and out.returncode != 0:
+                # 1 = nothing matched, non-1 = looked but failed (often
+                # permission); fuser writes its diagnostics to stderr
+                self.log_line.emit(
+                    f"fuser could not identify owner of port {port}: "
+                    f"{(out.stderr or '').strip() or 'unknown error'}"
+                )
             time.sleep(1)
         except Exception as e:
             self.log_line.emit(f"Port cleanup warning: {e}")

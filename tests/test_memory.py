@@ -18,13 +18,6 @@ from justllama.memory.manager import MemoryManager
 # Fixtures
 # ---------------------------------------------------------------------------
 
-@pytest.fixture(scope="session")
-def qapp():
-    """Session-scoped QApplication — required for QObject / Signal lifecycle."""
-    app = QApplication.instance()
-    if app is None:
-        app = QApplication(sys.argv)
-    return app
 
 
 @pytest.fixture()
@@ -174,7 +167,7 @@ class TestMemoryManager:
     def test_add_user_message(self, manager):
         assert manager.short_term.count() == 0
 
-        manager.add_user_message("user", "Hello world")
+        manager.add_message("user", "Hello world")
         assert manager.short_term.count() == 1
 
     def test_retrieve_context_disabled(self, manager):
@@ -205,8 +198,8 @@ class TestMemoryManager:
         assert manager.long_term.count() == 1
 
     def test_clear_all(self, manager):
-        manager.add_user_message("user", "msg-1")
-        manager.add_user_message("assistant", "msg-2")
+        manager.add_message("user", "msg-1")
+        manager.add_message("assistant", "msg-2")
         assert manager.short_term.count() == 2
         manager.set_enabled(True)
         manager.store_memory("Stored fact")
@@ -220,7 +213,7 @@ class TestMemoryManager:
         assert manager.long_term.count() == 0
 
     def test_stats(self, manager):
-        manager.add_user_message("user", "test")
+        manager.add_message("user", "test")
         manager.set_enabled(True)
         manager.store_memory("Fact A", "fact")
         manager.store_memory("Fact B", "fact")

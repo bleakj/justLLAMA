@@ -126,6 +126,8 @@ class LlamaClient:
 
     def set_base_url(self, host: str, port: int):
         """Update the server base URL."""
+        if not isinstance(port, int) or not (1024 <= port <= 65535):
+            raise ValueError(f"Port must be an int in 1024-65535, got {port!r}")
         self._base = f"{host}:{port}"
 
     @property

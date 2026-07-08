@@ -63,27 +63,37 @@ class ModelBrowser(QObject):
             self.models_changed.emit(models)
             return models
 
-        for f in sorted(self._dir.glob("*.gguf")):
-            stat = f.stat()
-            # Skip mmproj files (multimodal projectors, not standalone models)
-            if f.name.startswith("mmproj"):
-                continue
-            models.append(ModelInfo(
-                name=f.stem,
-                path=str(f),
-                size_bytes=stat.st_size,
-                modified_time=stat.st_mtime,
-            ).to_dict())
+        seen = set()
+        for pattern in ("*.gguf", "*.gguf.part*"):
+            for f in sorted(self._dir.glob(pattern)):
+                resolved = f.resolve()
+                if resolved in seen:
+                    continue
+                seen.add(resolved)
+                stat = f.stat()
+                # Skip mmproj files (multimodal projectors, not standalone models)
+                if f.name.startswith("mmproj"):
+                    continue
+                models.append(ModelInfo(
+                    name=f.stem,
+                    path=str(f),
+                    size_bytes=stat.st_size,
+                    modified_time=stat.st_mtime,
+                ).to_dict())
 
         self.models_changed.emit(models)
         return models
 
     @Slot(str, result=dict)
-    def get_model(self, path: str) -> dict | None:
-        """Get info for a specific model file."""
+    def get_model(self, path: str) -> dict:
+        """Get info for a specific model file.
+
+        Returns an empty dict when the file does not exist — ``None`` is
+        awkward to surface across QML and risks nil-property crashes.
+        """
         p = Path(path)
         if not p.is_file():
-            return None
+            return {}
         stat = p.stat()
         return ModelInfo(
             name=p.stem,

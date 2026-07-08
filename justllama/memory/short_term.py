@@ -51,6 +51,8 @@ class ShortTermMemory(QObject):
         with QMutexLocker(self._mutex):
             if limit < 0:
                 messages = list(self._messages)
+            elif limit == 0:
+                messages = []
             else:
                 messages = list(self._messages)[-limit:]
         return json.dumps(messages)

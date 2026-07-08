@@ -15,15 +15,6 @@ from justllama.models.downloader import ModelDownloader, _DownloadThread
 # Fixtures
 # ---------------------------------------------------------------------------
 
-@pytest.fixture
-def qapp():
-    """Ensure a QCoreApplication exists (PySide6 QObject requirement)."""
-    from PySide6.QtCore import QCoreApplication
-
-    app = QCoreApplication.instance()
-    if app is None:
-        app = QCoreApplication([])
-    return app
 
 
 @pytest.fixture
