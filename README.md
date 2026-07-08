@@ -17,20 +17,20 @@ justLLAMA is a local AI workbench. It manages a `llama-server` process, lets you
 ### Features
 
 - **Chat** — Streaming conversation with any GGUF model, adjustable generation parameters (temperature, top-p, top-k, repeat penalty, max tokens)
+- **4 Chat Modes** — Switch between Chat, Plan, Build, and Council modes. Each mode has distinct color accents (blue, amber, green, purple) visible on the sidebar header, border, and streaming area. The mode persists across sessions.
+  - **Plan Mode** — Model performs read-only analysis and outputs structured markdown plans
+  - **Build Mode** — Model can create, edit, and read local files via structured build operations; operations queue in a pending panel for review and one-click approval
+  - **Council Mode** — Sequentially queries three independently configured models and synthesizes their responses into a single answer
 - **Model Browser** — Scan local directories for GGUF files, view model info, download from HuggingFace Hub
 - **Model Profiles** — Save and load per-model configuration presets
-- **RAG (Retrieval-Augmented Generation)** — Ingest PDFs, DOCX, TXT, and Markdown files; chunk and embed them into a ChromaDB vector store; retrieve relevant context during chat
-- **Agent Memory** — Short-term (conversation) and long-term (SQLite-backed) memory with automatic summarization
+- **RAG (Retrieval-Augmented Generation)** — Ingest PDFs, DOCX, TXT, and Markdown files; chunk and embed them into a ChromaDB vector store with hybrid search (vector + BM25); relevant context automatically injected during chat
+- **Agent Memory** — Short-term (conversation deque) and long-term (SQLite-backed) memory with automatic summarization. Browse and manage memory via a dedicated Memory view
+- **Context Compaction** — Summarize and compact long conversations to stay within context window limits
 - **API Server** — OpenAI-compatible REST API via llama-server; copy-paste config for Python SDK, curl, environment variables
 - **Server Management** — Start/stop llama-server from the GUI, configure GPU layers, context size, threads, and all CLI options
 - **CUDA Support** — Automatic GPU detection and `--n-gpu-layers` configuration for NVIDIA cards
 - **Update Checker** — Check for llama.cpp releases, download and build from source
-
----
-
-## Screenshots
-
-> _Screenshots coming soon._
+- **Error Toast** — Non-blocking in-app notification system for errors and operation results
 
 ---
 
@@ -94,6 +94,12 @@ Go to **Settings**, configure your preferences (GPU layers, context size, thread
 
 Switch to **Chat** and start typing. Expand **▸ Generation** above the input to tune temperature, top-p, top-k, and other parameters.
 
+Use the mode selector ComboBox (above the input) to switch modes:
+- **Chat** — Standard conversational assistant
+- **Plan** — Read-only analysis; model outputs detailed markdown plans
+- **Build** — Model can create/edit files; operations appear in the sidebar for review before applying
+- **Council** — Queries three different models sequentially and synthesizes their responses
+
 ### 4. Use RAG
 
 Go to **RAG**, enable it, and upload documents. They'll be chunked and embedded into the vector store. Relevant context is automatically injected into chat when you ask about your documents.
@@ -122,6 +128,8 @@ response = client.chat.completions.create(
 
 justLLAMA stores settings via Qt's `QSettings` (typically `~/.config/justllama/justllama.conf`). Key settings:
 
+### Server
+
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `server/binary` | `llama-server` | Path to llama-server binary |
@@ -129,9 +137,44 @@ justLLAMA stores settings via Qt's `QSettings` (typically `~/.config/justllama/j
 | `server/ctx_size` | `32768` | Context window size |
 | `server/n_gpu_layers` | `99` | GPU layers to offload (-1 = auto) |
 | `server/threads` | `0` | CPU threads (0 = auto) |
+| `server/model_path` | — | Active model file path |
+
+### Models
+
+| Setting | Default | Description |
+|---------|---------|-------------|
 | `models/directory` | `~/Documents/models` | Model search directory |
+
+### RAG
+
+| Setting | Default | Description |
+|---------|---------|-------------|
 | `rag/enabled` | `false` | Enable RAG pipeline |
+| `rag/chunk_size` | `512` | Document chunk size |
+| `rag/chunk_overlap` | `64` | Chunk overlap |
+| `rag/vectorstore_path` | — | Vector store directory |
+
+### Memory
+
+| Setting | Default | Description |
+|---------|---------|-------------|
 | `memory/enabled` | `false` | Enable agent memory |
+| `memory/db_path` | `:memory:` | Long-term memory database |
+| `memory/max_short_term` | `50` | Short-term message limit |
+
+### Council
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `council/model_1` | — | First council model path |
+| `council/model_2` | — | Second council model path |
+| `council/model_3` | — | Third council model path |
+
+### Chat
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `chat/mode` | `chat` | Active chat mode (`chat`, `plan`, `build`, `council`) |
 
 ---
 
@@ -139,16 +182,19 @@ justLLAMA stores settings via Qt's `QSettings` (typically `~/.config/justllama/j
 
 ```
 justllama/
-├── main.py                 # Entry point
+├── main.py                 # Entry point: QGuiApplication + QML engine
+├── __main__.py             # `python -m justllama` support
 ├── config/
 │   └── settings.py         # QSettings wrapper
 ├── server/
 │   ├── manager.py          # llama-server process lifecycle
 │   ├── client.py           # REST API client
 │   ├── config.py           # CLI argument builder
-│   └── updater.py          # Update checker/downloader
+│   ├── council.py          # Council Mode orchestrator (multi-model synthesis)
+│   ├── build.py            # Build Manager (file read/write/edit for Build mode)
+│   └── updater.py          # Update checker/downloader/builder
 ├── models/
-│   ├── browser.py          # GGUF file scanner
+│   ├── browser.py          # GGUF file scanner + metadata extractor
 │   ├── downloader.py       # HuggingFace Hub download
 │   └── profiles.py         # Per-model config profiles
 ├── rag/
@@ -158,16 +204,17 @@ justllama/
 ├── memory/
 │   ├── short_term.py       # Conversation context (deque)
 │   ├── long_term.py        # SQLite-backed persistent memory
-│   └── manager.py          # Memory orchestrator
+│   └── manager.py          # Memory orchestrator + summarization
 └── ui/qml/
-    ├── Main.qml            # App shell + navigation
-    ├── ChatView.qml        # Chat interface + generation controls
-    ├── ModelBrowser.qml    # Model selection + download
-    ├── SettingsView.qml    # Server config + update checker
-    ├── RAGView.qml         # Document management
-    ├── MemoryView.qml      # Memory browser
-    ├── APIView.qml         # API reference + copy-paste snippets
-    └── ConfigSnippet.qml   # Reusable code snippet component
+    ├── Main.qml             # Application shell + navigation stack
+    ├── ChatView.qml         # Chat interface, 4 modes, streaming, generation controls
+    ├── ModelBrowser.qml     # Model selection + download from HuggingFace
+    ├── SettingsView.qml     # Server config, update checker, council model config
+    ├── RAGView.qml          # Document management + ingestion
+    ├── MemoryView.qml       # Memory browser (short/long term)
+    ├── APIView.qml          # API reference + copy-paste code snippets
+    ├── ConfigSnippet.qml    # Reusable code snippet component
+    └── ErrorToast.qml       # Non-blocking notification overlay
 ```
 
 ---
@@ -178,7 +225,7 @@ justllama/
 # Install dev dependencies
 pip install -e ".[rag,dev]"
 
-# Run tests (284 tests)
+# Run tests (288 tests)
 python3 -m pytest tests/ -v
 
 # Quick check
@@ -187,10 +234,12 @@ python3 -m pytest tests/ -q
 
 ### Architecture
 
-- **Python** handles all business logic: server management, API calls, file I/O, RAG pipeline, memory
-- **QML/Kirigami** handles the UI: layout, navigation, animations, theme integration
+- **Python** handles all business logic: server management, API calls, file I/O, RAG pipeline, memory, council orchestration, build operations
+- **QML/Kirigami** handles the UI: layout, navigation, animations, theme integration, per-mode color theming
 - Communication is via Qt context properties and signal/slot connections
 - No Python imports in QML; no direct QML manipulation from Python (except context properties)
+- Council and Build modes use QThread workers to avoid blocking the UI during model switching and file operations
+- Chat modes use reactive QML bindings for instant visual feedback on mode switches
 
 ---
 

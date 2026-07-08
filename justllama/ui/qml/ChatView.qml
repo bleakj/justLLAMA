@@ -22,6 +22,23 @@ Kirigami.Page {
     property bool showGenSettings: false
     property var currentXhr: null
     property string assistantName: "Assistant"
+    property var pendingOperations: []
+    readonly property color modeAccentColor: {
+        switch (modeSelector.currentIndex) {
+            case 1: return Qt.rgba(0.85, 0.55, 0.2, 1)    // Plan — warm amber
+            case 2: return Qt.rgba(0.25, 0.7, 0.4, 1)     // Build — green
+            case 3: return Qt.rgba(0.6, 0.3, 0.85, 1)     // Council — purple
+            default: return safeHighlightColor             // Chat — default blue
+        }
+    }
+    readonly property string modeName: {
+        switch (modeSelector.currentIndex) {
+            case 1: return "Plan Mode"
+            case 2: return "Build Mode"
+            case 3: return "Council Mode"
+            default: return "Chat Mode"
+        }
+    }
 
     // Safe theme colors with fallbacks for navigation transitions
     readonly property color safeBorderColor: Kirigami.Theme.borderColor || Qt.rgba(0.5, 0.5, 0.5, 1)
@@ -141,6 +158,18 @@ Kirigami.Page {
                                 text: modelData.content
                                 wrapMode: Text.Wrap
                                 Layout.fillWidth: true
+                                selectable: true
+                            }
+                            RowLayout {
+                                Layout.topMargin: Kirigami.Units.smallSpacing
+                                Button {
+                                    text: "Copy"
+                                    flat: true
+                                    icon.name: "edit-copy"
+                                    font.pointSize: 9
+                                    onClicked: chatPage.copyMessage(modelData.content)
+                                }
+                                Item { Layout.fillWidth: true }
                             }
                         }
                     }
@@ -297,7 +326,7 @@ Kirigami.Page {
                 Layout.preferredHeight: streamingText.height + Kirigami.Units.largeSpacing * 2
                 visible: isGenerating
                 color: safeAltBgColor
-                border.color: safeHighlightColor
+                border.color: chatPage.modeAccentColor
                 border.width: 1
                 radius: Kirigami.Units.cornerRadius
 
@@ -364,7 +393,7 @@ Kirigami.Page {
             Layout.preferredWidth: 220
             Layout.fillHeight: true
             color: safeBgColor
-            border.color: safeBorderColor
+            border.color: chatPage.modeAccentColor
             border.width: 1
 
             ColumnLayout {
@@ -377,11 +406,18 @@ Kirigami.Page {
                     text: "justLLAMA"
                     font.bold: true
                     font.pointSize: 16
-                    color: safeHighlightColor
+                    color: chatPage.modeAccentColor
                     Layout.alignment: Qt.AlignHCenter
                 }
+                Label {
+                    text: chatPage.modeName
+                    font.pointSize: 11
+                    color: chatPage.modeAccentColor
+                    Layout.alignment: Qt.AlignHCenter
+                    opacity: 0.85
+                }
 
-                Rectangle { Layout.fillWidth: true; height: 1; color: safeBorderColor }
+                Rectangle { Layout.fillWidth: true; height: 1; color: chatPage.modeAccentColor }
 
                 // Context usage
                 Label {
@@ -459,6 +495,83 @@ Kirigami.Page {
                     onClicked: compactContext()
                 }
 
+                        // Pending Build Operations panel (visible only in Build mode)
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: buildOpsColumn.implicitHeight + Kirigami.Units.largeSpacing * 2
+                            visible: modeSelector.currentIndex === 2 && chatPage.pendingOperations.length > 0
+                            color: safeAltBgColor
+                            border.color: chatPage.modeAccentColor
+                            border.width: 1
+                            radius: Kirigami.Units.cornerRadius
+
+                            ColumnLayout {
+                                id: buildOpsColumn
+                                anchors.fill: parent
+                                anchors.margins: Kirigami.Units.smallSpacing
+                                spacing: Kirigami.Units.smallSpacing
+
+                                Label { text: "Pending Build Operations"; font.bold: true; font.pointSize: 11 }
+
+                                Repeater {
+                                    model: chatPage.pendingOperations
+
+                                    delegate: ColumnLayout {
+                                        spacing: 2
+                                        Label {
+                                            text: "[" + modelData.op.toUpperCase() + "] " + (modelData.path || "") + (modelData.command || "")
+                                            font.family: "monospace"
+                                            font.pointSize: 9
+                                            elide: Text.ElideRight
+                                            wrapMode: Text.Wrap
+                                            Layout.fillWidth: true
+                                        }
+                                        RowLayout {
+                                            Button {
+                                                text: "Apply"
+                                                flat: true
+                                                icon.name: "dialog-ok"
+                                                onClicked: {
+                                                    var result = buildManager.apply_operation(JSON.stringify(modelData))
+                                                    var ops = chatPage.pendingOperations
+                                                    ops.splice(index, 1)
+                                                    chatPage.pendingOperations = ops
+                                                    chatPage.pendingOperationsChanged()
+                                                    errorToast.show("Build op applied: " + result)
+                                                }
+                                            }
+                                            Button {
+                                                text: "Discard"
+                                                flat: true
+                                                icon.name: "dialog-cancel"
+                                                onClicked: {
+                                                    var ops = chatPage.pendingOperations
+                                                    ops.splice(index, 1)
+                                                    chatPage.pendingOperations = ops
+                                                    chatPage.pendingOperationsChanged()
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Button {
+                                    text: "Apply All (" + chatPage.pendingOperations.length + ")"
+                                    Layout.fillWidth: true
+                                    onClicked: {
+                                        var ops = chatPage.pendingOperations.slice()  // copy
+                                        var results = []
+                                        for (var i = 0; i < ops.length; i++) {
+                                            var r = buildManager.apply_operation(JSON.stringify(ops[i]))
+                                            results.push(r)
+                                        }
+                                        chatPage.pendingOperations = []
+                                        chatPage.pendingOperationsChanged()
+                                        errorToast.show("Applied " + ops.length + " ops (" + results.filter(function(r) { return r === "OK" }).length + " OK)")
+                                    }
+                                }
+                            }
+                        }
                 Item { Layout.fillHeight: true }
 
                 // Model info
@@ -565,6 +678,25 @@ Kirigami.Page {
         }))
     }
 
+    function parseBuildOps(text) {
+        if (modeSelector.currentIndex !== 2) return
+        var newOps = []
+        var lines = text.split('\n')
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i].trim()
+            if (line.indexOf("=== BUILD_OP === ") === 0) {
+                try {
+                    var op = JSON.parse(line.substring("=== BUILD_OP === ".length))
+                    newOps.push(op)
+                } catch (e) {
+                    console.warn("Failed to parse BUILD_OP:", line, e.message)
+                }
+            }
+        }
+        pendingOperations = newOps
+        pendingOperationsChanged()
+    }
+
     function sendMessage() {
         var text = inputField.text.trim()
         if (text.length === 0 || isGenerating) return
@@ -610,7 +742,21 @@ Kirigami.Page {
         if (modeSelector.currentIndex === 1) {
             messages.push({"role": "system", "content": "You are in Plan Mode. You MUST perform READ-ONLY work, analyze the request, and output a detailed step-by-step markdown plan. Do NOT write full implementation code."})
         } else if (modeSelector.currentIndex === 2) {
-            messages.push({"role": "system", "content": "You are in Build Mode. Follow the plan exactly step-by-step to implement the solution. Output the necessary code."})
+            messages.push({"role": "system", "content": [
+                "You are in Build Mode. You can create, edit, and read local files.",
+                "To perform file operations, output them as a JSON block on its own line, one per line:",
+                "",
+                "=== BUILD_OP === {\"op\": \"write\", \"path\": \"relative/path/to/file.py\", \"content\": \"print('hello')\"}",
+                "=== BUILD_OP === {\"op\": \"edit\", \"path\": \"src/main.py\", \"old\": \"old text\", \"new\": \"new text\"}",
+                "=== BUILD_OP === {\"op\": \"read\", \"path\": \"src/main.py\"}",
+                "=== BUILD_OP === {\"op\": \"run\", \"command\": \"python -m pytest\"}",
+                "",
+                "Operations are executed in order. Read results are available to you as context.",
+                "You MUST NOT include any explanatory text (like ```) inside or around the BUILD_OP lines.",
+                "Maximum one operation per line. Each line MUST start with exactly \"=== BUILD_OP === \".",
+                "You should explain your plan in natural language, then output the BUILD_OP lines.",
+                "When writing code, prefer the write operation over edit for new files."
+            ].join("\n")})
         }
         
         var history = JSON.parse(memoryManager.get_short_term_history(-1))
@@ -667,6 +813,7 @@ Kirigami.Page {
                 }
                 
                 streamingText.text = fullContent || "Generating..."
+                chatPage.parseBuildOps(fullContent)
             }
             
             if (xhr.readyState === 4) {
@@ -745,6 +892,18 @@ Kirigami.Page {
             return
         }
         assistantName = p.split('/').pop().replace('.gguf', '')
+    }
+    function copyMessage(text) {
+        hiddenCopyField.text = text
+        hiddenCopyField.selectAll()
+        hiddenCopyField.copy()
+        errorToast.show("Copied!")
+    }
+    TextField {
+        id: hiddenCopyField
+        visible: false
+        width: 0
+        height: 0
     }
     ErrorToast {
         id: errorToast

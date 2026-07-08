@@ -19,6 +19,7 @@ from justllama.rag.retriever import Retriever
 from justllama.memory.short_term import ShortTermMemory
 from justllama.memory.long_term import LongTermMemory
 from justllama.memory.manager import MemoryManager
+from justllama.server.build import BuildManager
 
 
 def main():
@@ -55,6 +56,7 @@ def main():
     updater = Updater()
     council_manager = CouncilManager(settings, server_manager)
     model_profiles = ModelProfiles()
+    build_manager = BuildManager()
 
     # Ensure server is killed and resources released on app close.
     # Always run ``stop()`` (now a no-op-cleanup if the process is already
@@ -80,6 +82,7 @@ def main():
     ctx.setContextProperty("updater", updater)
     ctx.setContextProperty("councilManager", council_manager)
     ctx.setContextProperty("modelProfiles", model_profiles)
+    ctx.setContextProperty("buildManager", build_manager)
     if qml_file.exists():
         engine.load(qml_file.as_uri())
     else:
