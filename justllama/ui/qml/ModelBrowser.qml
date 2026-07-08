@@ -9,6 +9,8 @@ Kirigami.Page {
 
     property var models: []
     property string selectedModel: ""
+    property string downloadStatus: ""
+
 
     ColumnLayout {
         anchors.fill: parent
@@ -101,6 +103,16 @@ Kirigami.Page {
             text: models.length + " model(s) found"
             color: Kirigami.Theme.disabledTextColor
         }
+
+        // Download status
+        Label {
+            Layout.fillWidth: true
+            text: modelsPage.downloadStatus
+            color: Kirigami.Theme.highlightColor
+            visible: modelsPage.downloadStatus.length > 0
+            font.italic: true
+        }
+
     }
 
     // Download dialog
@@ -178,6 +190,9 @@ Kirigami.Page {
         console.log("Starting server:", bin, path, port, ctx, gpu, threads)
         var ok = serverManager.start(bin, path, port, ctx, gpu, threads)
         console.log("Server start result:", ok)
+        if (!ok) {
+            errorToast.show("Failed to start server with model: " + path.split('/').pop())
+        }
     }
 
     function startDownload() {
@@ -190,4 +205,26 @@ Kirigami.Page {
     }
 
     Component.onCompleted: refreshModels()
+
+    // Download progress tracking
+    Connections {
+        target: downloader
+        function onDownload_started(filename) {
+            modelsPage.downloadStatus = "Downloading " + filename + "..."
+        }
+        function onDownload_progress(filename, fraction, status) {
+            modelsPage.downloadStatus = status || Math.round(fraction * 100) + "%"
+        }
+        function onDownload_finished(filename, path) {
+            modelsPage.downloadStatus = "Downloaded: " + filename
+            refreshModels()
+        }
+        function onDownload_error(filename, error) {
+            modelsPage.downloadStatus = "Error: " + error
+        }
+    }
+    ErrorToast {
+        id: errorToast
+        anchors.fill: parent
+    }
 }

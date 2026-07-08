@@ -9,6 +9,8 @@ Kirigami.Page {
     title: "RAG"
 
     property var documents: []
+    property int chunkCount: 0
+    Component.onCompleted: refreshCount()
 
     ColumnLayout {
         anchors.fill: parent
@@ -136,7 +138,7 @@ Kirigami.Page {
 
             contentItem: RowLayout {
                 Label {
-                    text: "Vector Store: " + vectorStore.count() + " chunks"
+                    text: "Vector Store: " + ragPage.chunkCount + " chunks"
                     color: Kirigami.Theme.disabledTextColor
                 }
                 Item { Layout.fillWidth: true }
@@ -162,32 +164,51 @@ Kirigami.Page {
     }
 
     function ingestDocument(filePath) {
-        // Call Python ingestion via short-term memory bridge
-        // This is a simplified approach - in production, use direct Python calls
-        var xhr = new XMLHttpRequest()
-        xhr.open("POST", "http://localhost:" + (appSettings.get_int("server/port") || 8080) + "/rag/ingest", true)
-        xhr.setRequestHeader("Content-Type", "application/json")
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState === 4 && xhr.status === 200) {
-                var result = JSON.parse(xhr.responseText)
-                documents.push({
-                    filename: result.filename,
-                    chunks: result.chunks,
-                    size: result.size
-                })
-                documentsChanged()
-            }
+        var resultJson = vectorStore.ingest_document(filePath)
+        var result = JSON.parse(resultJson)
+        
+        if (result.error) {
+            console.error("Ingestion error:", result.error)
+            errorToast.show("Ingestion failed: " + result.error)
+            return
         }
-        xhr.send(JSON.stringify({"path": filePath}))
+        
+        documents.push({
+            filename: result.filename,
+            chunks: result.chunks,
+            size: result.size
+        })
+        documentsChanged()
+        refreshCount()
     }
 
     function removeDocument(index) {
+        var doc = documents[index]
+        if (doc) {
+            vectorStore.remove_document(doc.filename)
+        }
         documents.splice(index, 1)
         documentsChanged()
+        refreshCount()
     }
 
     function clearAll() {
         documents = []
         vectorStore.clear()
+        refreshCount()
+    }
+
+    function refreshCount() {
+        try {
+            ragPage.chunkCount = vectorStore.count()
+        } catch (e) {
+            console.error("Failed to refresh count:", e)
+            errorToast.show("Failed to refresh document count: " + e.message)
+            ragPage.chunkCount = 0
+        }
+    }
+    ErrorToast {
+        id: errorToast
+        anchors.fill: parent
     }
 }

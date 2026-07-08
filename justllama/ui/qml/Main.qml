@@ -82,7 +82,7 @@ Kirigami.ApplicationWindow {
         anchors.fill: parent
         currentIndex: 0
 
-        ChatView {}
+        ChatView { objectName: "chatView" }
         ModelBrowser {}
         RAGView {}
         MemoryView {}
@@ -102,6 +102,7 @@ Kirigami.ApplicationWindow {
         }
         function onServer_error(msg) {
             console.log("Server error:", msg)
+            errorToast.show("Server error: " + msg)
         }
     }
 
@@ -132,5 +133,10 @@ Kirigami.ApplicationWindow {
                 color: root.serverRunning ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.disabledTextColor
             }
         }
+    }
+
+    ErrorToast {
+        id: errorToast
+        anchors.fill: parent
     }
 }

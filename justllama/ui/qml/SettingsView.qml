@@ -19,7 +19,7 @@ Kirigami.ScrollablePage {
         target: serverManager
         function onServer_started(port) { serverRunning = true }
         function onServer_stopped() { serverRunning = false }
-        function onServer_error(msg) { serverRunning = false }
+        function onServer_error(msg) { serverRunning = false; errorToast.show("Server error: " + msg) }
     }
     // Updater signal handlers
     Connections {
@@ -136,14 +136,25 @@ Kirigami.ScrollablePage {
                     Label { text: "Context Size:"; Layout.preferredWidth: 120 }
                     ComboBox {
                         id: ctxSizeCombo
+                        property bool _ready: false
                         model: ["8K (8192)", "16K (16384)", "32K (32768)", "64K (65536)", "128K (131072)", "200K (204800)"]
                         currentIndex: {
                             var v = appSettings.get_int("server/ctx_size")
                             var sizes = [8192, 16384, 32768, 65536, 131072, 204800]
                             var idx = sizes.indexOf(v)
-                            return idx >= 0 ? idx : 2  // default to 32K
+                            if (idx >= 0) return idx
+                            // Coerce to nearest predefined size
+                            var closest = sizes[0], minDist = Math.abs(v - sizes[0])
+                            for (var i = 1; i < sizes.length; i++) {
+                                var d = Math.abs(v - sizes[i])
+                                if (d < minDist) { minDist = d; closest = sizes[i] }
+                            }
+                            appSettings.set_int("server/ctx_size", closest)
+                            return sizes.indexOf(closest)
                         }
+                        Component.onCompleted: _ready = true
                         onCurrentIndexChanged: {
+                            if (!_ready) return
                             var sizes = [8192, 16384, 32768, 65536, 131072, 204800]
                             appSettings.set_int("server/ctx_size", sizes[currentIndex])
                         }
@@ -218,6 +229,88 @@ Kirigami.ScrollablePage {
                 }
             }
         }
+        // Council Models Settings
+        Kirigami.AbstractCard {
+            Layout.fillWidth: true
+
+            contentItem: ColumnLayout {
+                spacing: Kirigami.Units.smallSpacing
+
+                Label {
+                    text: "Council Models"
+                    font.bold: true
+                    font.pointSize: 14
+                }
+
+                Label {
+                    text: "Select three different models to query in Council mode. They will run sequentially."
+                    font.italic: true
+                    color: Kirigami.Theme.disabledTextColor
+                    wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                }
+
+                // Model 1
+                Label { text: "Council Model 1:" }
+                RowLayout {
+                    Layout.fillWidth: true
+                    TextField {
+                        id: councilModel1Field
+                        Layout.fillWidth: true
+                        text: appSettings.get_string("council/model_1")
+                        placeholderText: "Path to first model (.gguf)"
+                        onEditingFinished: appSettings.set_string("council/model_1", text)
+                    }
+                    Button {
+                        text: "Browse"
+                        onClicked: {
+                            modelFileDialog.targetSettingKey = "council/model_1"
+                            modelFileDialog.open()
+                        }
+                    }
+                }
+
+                // Model 2
+                Label { text: "Council Model 2:" }
+                RowLayout {
+                    Layout.fillWidth: true
+                    TextField {
+                        id: councilModel2Field
+                        Layout.fillWidth: true
+                        text: appSettings.get_string("council/model_2")
+                        placeholderText: "Path to second model (.gguf)"
+                        onEditingFinished: appSettings.set_string("council/model_2", text)
+                    }
+                    Button {
+                        text: "Browse"
+                        onClicked: {
+                            modelFileDialog.targetSettingKey = "council/model_2"
+                            modelFileDialog.open()
+                        }
+                    }
+                }
+
+                // Model 3
+                Label { text: "Council Model 3:" }
+                RowLayout {
+                    Layout.fillWidth: true
+                    TextField {
+                        id: councilModel3Field
+                        Layout.fillWidth: true
+                        text: appSettings.get_string("council/model_3")
+                        placeholderText: "Path to third model (.gguf)"
+                        onEditingFinished: appSettings.set_string("council/model_3", text)
+                    }
+                    Button {
+                        text: "Browse"
+                        onClicked: {
+                            modelFileDialog.targetSettingKey = "council/model_3"
+                            modelFileDialog.open()
+                        }
+                    }
+                }
+            }
+        }
 
         // RAG Settings
         Rectangle {
@@ -273,6 +366,18 @@ Kirigami.ScrollablePage {
                         stepSize: 64
                         value: appSettings.get_int("rag/chunk_size")
                         onValueModified: appSettings.set_int("rag/chunk_size", value)
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label { text: "Chunk Overlap:"; Layout.preferredWidth: 120 }
+                    SpinBox {
+                        from: 0
+                        to: 512
+                        stepSize: 32
+                        value: appSettings.get_int("rag/chunk_overlap")
+                        onValueModified: appSettings.set_int("rag/chunk_overlap", value)
                     }
                 }
             }
@@ -445,6 +550,30 @@ Kirigami.ScrollablePage {
 
     }
 
+    // Model file dialog
+    FileDialog {
+        id: modelFileDialog
+        title: "Select GGUF Model File"
+        nameFilters: ["GGUF Models (*.gguf)"]
+        property string targetSettingKey: ""
+        onAccepted: {
+            var path = selectedFile.toString()
+            if (path.startsWith("file:///")) {
+                path = path.slice(8)
+            } else if (path.startsWith("file://")) {
+                path = path.slice(7)
+            }
+            path = decodeURIComponent(path)
+            appSettings.set_string(targetSettingKey, path)
+            if (targetSettingKey === "council/model_1") {
+                councilModel1Field.text = path
+            } else if (targetSettingKey === "council/model_2") {
+                councilModel2Field.text = path
+            } else if (targetSettingKey === "council/model_3") {
+                councilModel3Field.text = path
+            }
+        }
+    }
     // Folder dialog
     FolderDialog {
         id: folderDialog
@@ -481,5 +610,9 @@ Kirigami.ScrollablePage {
         function onServer_error(msg) {
             serverLog.text += "ERROR: " + msg + "\n"
         }
+    }
+    ErrorToast {
+        id: errorToast
+        anchors.fill: parent
     }
 }

@@ -9,6 +9,13 @@ Kirigami.Page {
 
     property var memories: []
     property string selectedCategory: "all"
+    property var statsObj: (function() {
+        try { return JSON.parse(memoryManager.stats()) }
+        catch (e) {
+            console.error("Failed to parse memory stats:", e)
+            return { short_term_count: 0, long_term_count: 0, enabled: false }
+        }
+    })()
 
     ColumnLayout {
         anchors.fill: parent
@@ -63,12 +70,12 @@ Kirigami.Page {
 
             contentItem: RowLayout {
                 Label {
-                    text: "Short-term: " + JSON.parse(memoryManager.stats()).short_term_count + " messages"
+                    text: "Short-term: " + statsObj.short_term_count + " messages"
                     color: Kirigami.Theme.disabledTextColor
                 }
                 Item { Layout.fillWidth: true }
                 Label {
-                    text: "Long-term: " + JSON.parse(memoryManager.stats()).long_term_count + " memories"
+                    text: "Long-term: " + statsObj.long_term_count + " memories"
                     color: Kirigami.Theme.disabledTextColor
                 }
             }
@@ -182,10 +189,17 @@ Kirigami.Page {
     }
 
     function refreshMemories() {
-        if (selectedCategory === "all") {
-            memories = JSON.parse(memoryManager.list_all_memories())
-        } else {
-            memories = JSON.parse(memoryManager.list_memories_by_category(selectedCategory))
+        console.log("MemoryView: Refreshing memories...")
+        try {
+            statsObj = JSON.parse(memoryManager.stats())
+            if (selectedCategory === "all") {
+                memories = JSON.parse(memoryManager.list_all_memories())
+            } else {
+                memories = JSON.parse(memoryManager.list_memories_by_category(selectedCategory))
+            }
+        } catch (e) {
+            console.error("Failed to refresh memories:", e)
+            errorToast.show("Failed to refresh memories: " + e.message)
         }
     }
 
@@ -195,4 +209,8 @@ Kirigami.Page {
     }
 
     Component.onCompleted: refreshMemories()
+    ErrorToast {
+        id: errorToast
+        anchors.fill: parent
+    }
 }
