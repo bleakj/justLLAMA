@@ -84,6 +84,7 @@ justllama
 python3 -m justllama
 ```
 
+A global wrapper script is installed at `~/.local/bin/justllama`, which sets `PYTHONPATH` automatically. You can run `justllama` from any directory — the current working directory is preserved and used by Build Mode for local file operations.
 ---
 
 ## Usage
