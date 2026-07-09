@@ -767,18 +767,18 @@ Kirigami.Page {
                 // Model info
                 Rectangle { Layout.fillWidth: true; height: 1; color: chatPage.safeBorderColor }
                 Label {
-                    text: "Model"
+                    text: modeSelector.currentIndex === 3 ? "Active Models" : "Model"
                     font.bold: true
                     font.pointSize: 12
                 }
-                Label {
-                    text: {
-                        var p = appSettings.get_string("server/model_path")
-                        return p ? p.split('/').pop().replace('.gguf', '') : "None loaded"
+                Repeater {
+                    model: modeSelector.currentIndex === 3 ? councilManager.active_models : [chatPage.assistantName]
+                    delegate: Label {
+                        text: modelData
+                        font.pointSize: 10
+                        wrapMode: Text.Wrap
+                        Layout.fillWidth: true
                     }
-                    font.pointSize: 10
-                    wrapMode: Text.Wrap
-                    Layout.fillWidth: true
                 }
 
                 // Server status
@@ -810,9 +810,20 @@ Kirigami.Page {
                     if (slots && Array.isArray(slots)) {
                         var used = 0
                         var max = 0
+                        var bestSlotIdx = -1
+                        var bestSlotTokens = 0
                         for (var i = 0; i < slots.length; i++) {
-                            used += slots[i].n_past || 0
-                            max += slots[i].n_ctx || 0
+                            var slotTokens = (slots[i].n_past || 0) + (slots[i].n_prompt_tokens || 0) + (slots[i].n_decoded_tokens || 0)
+                            if (slotTokens > bestSlotTokens) {
+                                bestSlotTokens = slotTokens
+                                bestSlotIdx = i
+                            }
+                        }
+                        if (bestSlotIdx >= 0) {
+                            used = bestSlotTokens
+                            max = slots[bestSlotIdx].n_ctx || 0
+                        } else if (slots.length > 0) {
+                            max = slots[0].n_ctx || 0
                         }
                         chatPage.contextUsed = used
                         if (max > 0) {
@@ -903,6 +914,7 @@ Kirigami.Page {
         // ── Image generation command ──
         var imageMatch = text.match(/^!(?:image|imagine)\s+(.+)/i)
         if (imageMatch) {
+            var imagePrompt = imageMatch[1]
             streamingText.text = "Generating image: " + imagePrompt.substring(0, 40) + (imagePrompt.length > 40 ? "..." : "")
             chatPage.activeGenerationMode = 11
             imageGenManager.generate(imagePrompt)
@@ -912,10 +924,12 @@ Kirigami.Page {
         // ── Video generation command ──
         var videoMatch = text.match(/^!(?:video|animate)\s+(.+)/i)
         if (videoMatch) {
+            var videoPrompt = videoMatch[1]
             streamingText.text = "Generating video: " + videoPrompt.substring(0, 40) + (videoPrompt.length > 40 ? "..." : "")
             chatPage.activeGenerationMode = 12
             videoGenManager.generate(videoPrompt, 832, 480, 49)
             return
+        }
         if (modeSelector.currentIndex === 3) {
             streamingText.text = "Initializing Council..."
             chatPage.activeGenerationMode = 3
@@ -970,8 +984,6 @@ Kirigami.Page {
         var history = JSON.parse(memoryManager.get_short_term_history(-1))
         messages = messages.concat(history)
         
-        callChatCompletion(messages)
-    }
 
         chatPage.activeGenerationMode = 0
         // Clear any leftover text (e.g. "ERROR: ...") so the first chunk replaces it cleanly.

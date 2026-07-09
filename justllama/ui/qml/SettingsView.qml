@@ -151,7 +151,6 @@ Kirigami.ScrollablePage {
                                 var d = Math.abs(v - sizes[i])
                                 if (d < minDist) { minDist = d; closest = sizes[i] }
                             }
-                            appSettings.set_int("server/ctx_size", closest)
                             return sizes.indexOf(closest)
                         }
                         Component.onCompleted: _ready = true

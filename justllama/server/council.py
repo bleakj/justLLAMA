@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 import urllib.request
 from pathlib import Path
-from PySide6.QtCore import QObject, QThread, Signal, Slot
+from PySide6.QtCore import QObject, QThread, Signal, Slot, Property
 
 from justllama.server.client import LlamaClient
 from justllama.server.providers import provider_base_url
@@ -202,12 +202,37 @@ class CouncilManager(QObject):
     progress_update = Signal(str)
     synthesis_ready = Signal(str)
     error = Signal(str)
+    models_changed = Signal()
 
     def __init__(self, settings, server_manager, parent=None):
         super().__init__(parent)
         self.settings = settings
         self.server_manager = server_manager
         self._runner = None
+        # Update UI when settings change
+        self.settings.settings_changed.connect(self._on_settings_changed)
+
+    def _on_settings_changed(self, key, value):
+        if key in ("server/model_path", "council/model_1", "council/model_2", "council/model_3"):
+            self.models_changed.emit()
+
+    @Property(list, notify=models_changed)
+    def active_models(self) -> list:
+        res = []
+        # Main synthesizer model
+        main_model = self.settings.get_string("server/model_path")
+        if main_model:
+            res.append(f"Synthesizer: {Path(main_model).name}")
+        else:
+            res.append("Synthesizer: None loaded")
+        # Council models
+        for i in range(1, 4):
+            m = self.settings.get_string(f"council/model_{i}")
+            if m:
+                res.append(f"Model {i}: {Path(m).name}")
+            else:
+                res.append(f"Model {i}: (Not Configured)")
+        return res
     @Slot()
     def stop(self):
         """Request the running council run to stop and wait for it."""

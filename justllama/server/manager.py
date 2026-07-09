@@ -76,14 +76,14 @@ class ServerManager(QObject):
     server_error = Signal(str)
     log_line = Signal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, settings=None, parent=None):
         super().__init__(parent)
+        self._settings = settings
         self._process: subprocess.Popen | None = None
         self._stdout_reader: _ServerLogReader | None = None
         self._stderr_reader: _ServerLogReader | None = None
         self._health_worker: _HealthWorker | None = None
         self._port = 8080
-
     @Slot(result=bool)
     def is_running(self) -> bool:
         if self._process is None:
@@ -133,15 +133,33 @@ class ServerManager(QObject):
             return False
 
         # Build command
+        ngl_val = "auto" if n_gpu_layers in (99, -1) else str(n_gpu_layers)
         cmd = [
             binary,
             "--model", model_path,
             "--port", str(port),
-            "--ctx-size", str(ctx_size),
-            "--n-gpu-layers", str(n_gpu_layers),
+            "-c", str(ctx_size),
+            "-ngl", ngl_val,
         ]
         if threads > 0:
             cmd.extend(["--threads", str(threads)])
+
+        # Append memory configurations if settings are available
+        if self._settings:
+            if self._settings.get_bool("server/flash_attn"):
+                cmd.extend(["--flash-attn", "on"])
+            if not self._settings.get_bool("server/mmap"):
+                cmd.append("--no-mmap")
+            if self._settings.get_bool("server/mlock"):
+                cmd.append("--mlock")
+            
+            batch_size = self._settings.get_int("server/batch_size")
+            if batch_size > 0:
+                cmd.extend(["--batch-size", str(batch_size)])
+            
+            ubatch_size = self._settings.get_int("server/ubatch_size")
+            if ubatch_size > 0:
+                cmd.extend(["--ubatch-size", str(ubatch_size)])
         # Set env so shared libs next to the binary are found (CUDA, etc.)
         import os
         env = os.environ.copy()

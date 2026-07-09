@@ -49,7 +49,7 @@ def main():
     # Load secrets from .env into os.environ before any key reads occur.
     load_env()
     settings = AppSettings()
-    server_manager = ServerManager()
+    server_manager = ServerManager(settings)
     model_browser = ModelBrowser(settings.models_directory)
     model_downloader = ModelDownloader(settings.models_directory)
     vector_store = VectorStore(
