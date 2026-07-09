@@ -52,8 +52,6 @@ Kirigami.ScrollablePage {
         if (saved.length > 0) {
             imagePage.selectedModel = saved
         }
-        // Load gallery from ComfyUI output directory
-        scanGallery()
     }
 
     // ── helpers ──────────────────────────────────────────────────────
@@ -61,10 +59,6 @@ Kirigami.ScrollablePage {
         imagePage.models = imageGenManager.available_models()
     }
 
-    function scanGallery() {
-        // We'll scan the output directory by attempting to list recent files
-        // This is driven by generation_complete signals; initial load is passive.
-    }
 
     function generateImage() {
         if (isGenerating) return

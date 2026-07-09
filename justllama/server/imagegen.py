@@ -92,7 +92,7 @@ class ImageGenRunner(QThread):
 
         # 3. Wait for healthy
         self.progress_update.emit("Waiting for image engine...")
-        if not wait_for_comfy_health(_LAUNCH_TIMEOUT):
+        if not wait_for_comfy_health(comfy_proc, _LAUNCH_TIMEOUT):
             self.error.emit("Image generation engine did not start within 60s")
         image_path = self._post_prompt(comfy_proc)
         if image_path and not self._stop_requested:
@@ -166,7 +166,7 @@ class ImageGenRunner(QThread):
             return None
 
         # Wait for completion
-        history = wait_for_comfy_execution(effective_id, _GENERATION_TIMEOUT)
+        history = wait_for_comfy_execution(comfy_proc, effective_id, _GENERATION_TIMEOUT)
         if history is None:
             self.error.emit("Image generation timed out")
             return None

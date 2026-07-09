@@ -15,12 +15,14 @@ class ChatRunner(QThread):
     generation_complete = Signal(list)
     error_occurred = Signal(str)
     tool_call_detected = Signal(str, str)  # tool_name, tool_args
+    reasoning_chunk_received = Signal(str)
 
-    def __init__(self, messages: list, params: dict, mcp_manager, parent=None):
+    def __init__(self, messages: list, params: dict, mcp_manager, skills_manager=None, parent=None):
         super().__init__(parent)
         self.messages = list(messages)
         self.params = dict(params)
         self.mcp_manager = mcp_manager
+        self.skills_manager = skills_manager
         self._is_stopped = False
         self._current_response = None
 
@@ -53,12 +55,18 @@ class ChatRunner(QThread):
         while loop_count < max_loops and not self._is_stopped:
             loop_count += 1
             
-            # Fetch tools if MCP is available and has servers configured
-            tools = None
+            # Fetch tools from MCP and native skills
+            tools = []
             if self.mcp_manager:
                 mcp_tools = self.mcp_manager.get_openai_tools()
                 if mcp_tools:
-                    tools = mcp_tools
+                    tools.extend(mcp_tools)
+            if self.skills_manager:
+                skill_tools = self.skills_manager.get_active_tools_schema()
+                if skill_tools:
+                    tools.extend(skill_tools)
+            if not tools:
+                tools = None
 
             # Prepare chat completion parameters
             model = self.params.get("model", "default")
@@ -85,6 +93,7 @@ class ChatRunner(QThread):
             self._current_response = resp
             tool_calls_accumulated = {}
             full_content = ""
+            full_reasoning = ""
 
             try:
                 for line in resp.iter_lines():
@@ -111,6 +120,12 @@ class ChatRunner(QThread):
                         if content_chunk:
                             full_content += content_chunk
                             self.chunk_received.emit(content_chunk)
+                        
+                        # Accumulate reasoning content (thinking phase)
+                        reasoning_chunk = delta.get("reasoning_content")
+                        if reasoning_chunk:
+                            full_reasoning += reasoning_chunk
+                            self.reasoning_chunk_received.emit(reasoning_chunk)
                         
                         # Accumulate tool calls chunks
                         if "tool_calls" in delta:
@@ -154,11 +169,10 @@ class ChatRunner(QThread):
                     })
 
                 # Append assistant message with tool calls to history
-                assistant_msg = {
-                    "role": "assistant",
-                    "content": full_content or None,
-                    "tool_calls": tool_calls_list
-                }
+                assistant_msg = {"role": "assistant", "content": full_content or None}
+                if full_reasoning:
+                    assistant_msg["reasoning_content"] = full_reasoning
+                assistant_msg["tool_calls"] = tool_calls_list
                 self.messages.append(assistant_msg)
 
                 # Execute each tool call
@@ -174,11 +188,15 @@ class ChatRunner(QThread):
                     self.tool_call_detected.emit(name, json.dumps(args))
                     print(f"[ChatRunner] Executing tool '{name}' with args {args}")
                     
-                    # Execute tool synchronously within this worker thread
-                    if self.mcp_manager:
+                    # Route execution to native skills first, then MCP
+                    if self.skills_manager and self.skills_manager.has_tool(name):
+                        tool_result = self.skills_manager.execute_tool(
+                            name, args, cancel_check=lambda: self._is_stopped
+                        )
+                    elif self.mcp_manager:
                         tool_result = self.mcp_manager.execute_tool(name, args)
                     else:
-                        tool_result = f"Error: McpManager not available to execute '{name}'"
+                        tool_result = f"Error: no handler available to execute '{name}'"
                     
                     print(f"[ChatRunner] Tool '{name}' returned result: {tool_result}")
                     
@@ -196,11 +214,12 @@ class ChatRunner(QThread):
             
             else:
                 # No tool calls were made; generation is complete
+                msg = {"role": "assistant"}
                 if full_content:
-                    self.messages.append({
-                        "role": "assistant",
-                        "content": full_content
-                    })
+                    msg["content"] = full_content
+                if full_reasoning:
+                    msg["reasoning_content"] = full_reasoning
+                self.messages.append(msg)
                 self.generation_complete.emit(self.messages)
                 break
 
@@ -212,10 +231,12 @@ class ChatManager(QObject):
     generation_complete = Signal(list)
     error_occurred = Signal(str)
     tool_call_detected = Signal(str, str)
+    reasoning_chunk_received = Signal(str)
 
-    def __init__(self, mcp_manager=None, parent=None):
+    def __init__(self, mcp_manager=None, skills_manager=None, parent=None):
         super().__init__(parent)
         self.mcp_manager = mcp_manager
+        self.skills_manager = skills_manager
         self._runner = None
 
     @Slot(list, dict)
@@ -223,11 +244,12 @@ class ChatManager(QObject):
         """Slot called from QML to launch the chat completions loop."""
         self.stop_generation()
 
-        self._runner = ChatRunner(messages, params, self.mcp_manager)
+        self._runner = ChatRunner(messages, params, self.mcp_manager, self.skills_manager)
         self._runner.chunk_received.connect(self.chunk_received)
         self._runner.generation_complete.connect(self._on_generation_complete)
         self._runner.error_occurred.connect(self.error_occurred)
         self._runner.tool_call_detected.connect(self.tool_call_detected)
+        self._runner.reasoning_chunk_received.connect(self.reasoning_chunk_received)
         self._runner.start()
 
     @Slot()

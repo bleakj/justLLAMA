@@ -28,6 +28,7 @@ from justllama.voice.manager import VoiceInputManager
 from justllama.server.external_models import ExternalModelsManager
 from justllama.server.mcp import McpManager
 from justllama.server.chat_manager import ChatManager
+from justllama.server.skills.manager import SkillsManager
 
 
 def main():
@@ -72,7 +73,8 @@ def main():
     videogen_manager = VideoGenManager(server_manager)
     voice_input_manager = VoiceInputManager(settings)
     mcp_manager = McpManager()
-    chat_manager = ChatManager(mcp_manager)
+    skills_manager = SkillsManager()
+    chat_manager = ChatManager(mcp_manager, skills_manager)
 
     external_models = ExternalModelsManager(settings)
     # Ensure server is killed and resources released on app close.
@@ -83,6 +85,7 @@ def main():
         long_term.close()
         voice_input_manager.unload_model()
         mcp_manager.shutdown()
+        skills_manager.shutdown()
         # ImageGenManager has no long-lived subprocess at shutdown time;
         # if a generation thread is still running it will be GC-collected.
     app.aboutToQuit.connect(_shutdown)
@@ -108,6 +111,7 @@ def main():
     ctx.setContextProperty("videoGenManager", videogen_manager)
     ctx.setContextProperty("voiceInputManager", voice_input_manager)
     ctx.setContextProperty("mcpManager", mcp_manager)
+    ctx.setContextProperty("skillsManager", skills_manager)
     ctx.setContextProperty("chatManager", chat_manager)
     ctx.setContextProperty("externalModels", external_models)
     if qml_file.exists():

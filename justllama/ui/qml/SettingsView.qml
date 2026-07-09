@@ -10,19 +10,9 @@ Kirigami.ScrollablePage {
 
     // Update state machine
     property string updateState: "idle"
-    property bool serverRunning: false
     property bool showServerLog: false
     readonly property color safeBorderColor: Kirigami.Theme.borderColor || Qt.rgba(0.5, 0.5, 0.5, 1)
 
-    Component.onCompleted: {
-        serverRunning = serverManager.is_running()
-    }
-    Connections {
-        target: serverManager
-        function onServer_started(port) { serverRunning = true }
-        function onServer_stopped() { serverRunning = false }
-        function onServer_error(msg) { serverRunning = false; errorToast.show("Server error: " + msg) }
-    }
     // Updater signal handlers
     Connections {
         target: updater
@@ -560,21 +550,21 @@ Kirigami.ScrollablePage {
 
                     Button {
                         text: "Start Server"
-                        enabled: !settingsPage.serverRunning
+                        enabled: !root.serverRunning
                         onClicked: startServer()
                         Layout.fillWidth: true
                     }
 
                     Button {
                         text: "Stop Server"
-                        enabled: settingsPage.serverRunning
+                        enabled: root.serverRunning
                         onClicked: serverManager.stop()
                         Layout.fillWidth: true
                     }
 
                     Button {
                         text: "Restart"
-                        enabled: settingsPage.serverRunning
+                        enabled: root.serverRunning
                         onClicked: {
                             serverManager.stop()
                             startServer()
@@ -616,7 +606,7 @@ Kirigami.ScrollablePage {
                 }
 
                 Label {
-                    text: "To use cloud models in Council mode, configure your API keys here and prefix the model paths in settings with 'nvidia:', 'openrouter:', or 'opencode:' (e.g., 'openrouter:meta-llama/llama-3-8b-instruct')."
+                    text: "To use cloud models in Council mode, configure your API keys here and prefix the model paths in settings with 'nvidia:', 'openrouter:', 'opencode:', 'gemini:', or 'kilocode:' (e.g., 'openrouter:meta-llama/llama-3-8b-instruct')."
                     wrapMode: Text.Wrap
                     Layout.fillWidth: true
                     font.pointSize: 11
@@ -630,11 +620,48 @@ Kirigami.ScrollablePage {
                         Layout.preferredWidth: 150
                     }
                     TextField {
+                        id: nvidiaKeyField
                         Layout.fillWidth: true
                         text: appSettings.get_api_key("nvidia")
                         echoMode: TextInput.Password
                         placeholderText: "nvapi-..."
                         onEditingFinished: appSettings.set_api_key("nvidia", text)
+                    }
+                    Button {
+                        id: nvidiaTestBtn
+                        text: "Save & Test"
+                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                        Layout.preferredWidth: 120
+                        onClicked: {
+                            appSettings.set_api_key("nvidia", nvidiaKeyField.text)
+                            externalModels.refresh("nvidia")
+                        }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label {
+                        text: "NVIDIA Endpoint:"
+                        font.bold: true
+                        Layout.preferredWidth: 150
+                    }
+                    TextField {
+                        id: nvidiaEndpointField
+                        Layout.fillWidth: true
+                        text: appSettings.get_string("cloud_endpoints/nvidia")
+                        placeholderText: "https://integrate.api.nvidia.com"
+                        onEditingFinished: appSettings.set_string("cloud_endpoints/nvidia", text)
+                    }
+                    Button {
+                        id: nvidiaEndpointSaveBtn
+                        text: "Save Endpoint"
+                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                        Layout.preferredWidth: 120
+                        onClicked: {
+                            appSettings.set_string("cloud_endpoints/nvidia", nvidiaEndpointField.text)
+                            successToast.show("NVIDIA endpoint saved")
+                        }
                     }
                 }
 
@@ -646,11 +673,48 @@ Kirigami.ScrollablePage {
                         Layout.preferredWidth: 150
                     }
                     TextField {
+                        id: openrouterKeyField
                         Layout.fillWidth: true
                         text: appSettings.get_api_key("openrouter")
                         echoMode: TextInput.Password
                         placeholderText: "sk-or-v1-..."
                         onEditingFinished: appSettings.set_api_key("openrouter", text)
+                    }
+                    Button {
+                        id: openrouterTestBtn
+                        text: "Save & Test"
+                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                        Layout.preferredWidth: 120
+                        onClicked: {
+                            appSettings.set_api_key("openrouter", openrouterKeyField.text)
+                            externalModels.refresh("openrouter")
+                        }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label {
+                        text: "OpenRouter Endpoint:"
+                        font.bold: true
+                        Layout.preferredWidth: 150
+                    }
+                    TextField {
+                        id: openrouterEndpointField
+                        Layout.fillWidth: true
+                        text: appSettings.get_string("cloud_endpoints/openrouter")
+                        placeholderText: "https://openrouter.ai/api"
+                        onEditingFinished: appSettings.set_string("cloud_endpoints/openrouter", text)
+                    }
+                    Button {
+                        id: openrouterEndpointSaveBtn
+                        text: "Save Endpoint"
+                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                        Layout.preferredWidth: 120
+                        onClicked: {
+                            appSettings.set_string("cloud_endpoints/openrouter", openrouterEndpointField.text)
+                            successToast.show("OpenRouter endpoint saved")
+                        }
                     }
                 }
 
@@ -662,11 +726,22 @@ Kirigami.ScrollablePage {
                         Layout.preferredWidth: 150
                     }
                     TextField {
+                        id: opencodeKeyField
                         Layout.fillWidth: true
                         text: appSettings.get_api_key("opencode")
                         echoMode: TextInput.Password
                         placeholderText: "sk-..."
                         onEditingFinished: appSettings.set_api_key("opencode", text)
+                    }
+                    Button {
+                        id: opencodeTestBtn
+                        text: "Save & Test"
+                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                        Layout.preferredWidth: 120
+                        onClicked: {
+                            appSettings.set_api_key("opencode", opencodeKeyField.text)
+                            externalModels.refresh("opencode")
+                        }
                     }
                 }
 
@@ -678,194 +753,128 @@ Kirigami.ScrollablePage {
                         Layout.preferredWidth: 150
                     }
                     TextField {
+                        id: opencodeEndpointField
                         Layout.fillWidth: true
                         text: appSettings.get_string("cloud_endpoints/opencode")
                         placeholderText: "https://api.opencode.com"
                         onEditingFinished: appSettings.set_string("cloud_endpoints/opencode", text)
                     }
-                }
-                Label {
-                    text: "Cloud Model Selection"
-                    font.bold: true
-                    font.pointSize: 12
-                }
-                Label {
-                    text: "Fetch a provider's model list, pick a model, and assign it to a Council slot (council/model_1–3)."
-                    wrapMode: Text.Wrap
-                    Layout.fillWidth: true
-                    font.pointSize: 11
+                    Button {
+                        id: opencodeEndpointSaveBtn
+                        text: "Save Endpoint"
+                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                        Layout.preferredWidth: 120
+                        onClicked: {
+                            appSettings.set_string("cloud_endpoints/opencode", opencodeEndpointField.text)
+                            successToast.show("Opencode endpoint saved")
+                        }
+                    }
                 }
 
-                // NVIDIA
                 RowLayout {
                     Layout.fillWidth: true
-                    Label { text: "NVIDIA"; font.bold: true; Layout.preferredWidth: 90 }
-                    ComboBox {
-                        id: modelCombo_nvidia
-                        Layout.fillWidth: true
-                        enabled: count > 0
-                        displayText: count > 0 ? currentText : "No models cached — click Fetch"
-                    }
-                    Button {
-                        text: "Fetch models"
-                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                        Layout.preferredWidth: 130
-                        onClicked: externalModels.refresh("nvidia")
-                    }
-                    Button {
-                        text: "Clear"
-                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                        Layout.preferredWidth: 80
-                        onClicked: externalModels.clear_cache("nvidia")
-                    }
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    Label { text: "Council slot:"; Layout.preferredWidth: 90 }
-                    ComboBox {
-                        id: slotCombo_nvidia
-                        model: [1, 2, 3]
-                        Layout.preferredWidth: 80
-                    }
-                    Button {
-                        text: "Use in Council"
-                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                    Label {
+                        text: "Gemini API Key:"
+                        font.bold: true
                         Layout.preferredWidth: 150
-                        enabled: modelCombo_nvidia.count > 0
-                        onClicked: externalModels.select_model("nvidia", slotCombo_nvidia.currentIndex + 1, modelCombo_nvidia.currentText)
                     }
-                }
-                Label {
-                    id: errLabel_nvidia
-                    text: ""
-                    color: Kirigami.Theme.negativeTextColor
-                    wrapMode: Text.Wrap
-                    Layout.fillWidth: true
-                    font.pointSize: 10
-                    visible: false
-                }
-
-                // OpenRouter
-                RowLayout {
-                    Layout.fillWidth: true
-                    Label { text: "OpenRouter"; font.bold: true; Layout.preferredWidth: 90 }
-                    ComboBox {
-                        id: modelCombo_openrouter
+                    TextField {
+                        id: geminiKeyField
                         Layout.fillWidth: true
-                        enabled: count > 0
-                        displayText: count > 0 ? currentText : "No models cached — click Fetch"
+                        text: appSettings.get_api_key("gemini")
+                        echoMode: TextInput.Password
+                        placeholderText: "AIza..."
+                        onEditingFinished: appSettings.set_api_key("gemini", text)
                     }
                     Button {
-                        text: "Fetch models"
+                        id: geminiTestBtn
+                        text: "Save & Test"
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                        Layout.preferredWidth: 130
-                        onClicked: externalModels.refresh("openrouter")
+                        Layout.preferredWidth: 120
+                        onClicked: {
+                            appSettings.set_api_key("gemini", geminiKeyField.text)
+                            externalModels.refresh("gemini")
+                        }
                     }
-                    Button {
-                        text: "Clear"
-                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                        Layout.preferredWidth: 80
-                        onClicked: externalModels.clear_cache("openrouter")
-                    }
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    Label { text: "Council slot:"; Layout.preferredWidth: 90 }
-                    ComboBox {
-                        id: slotCombo_openrouter
-                        model: [1, 2, 3]
-                        Layout.preferredWidth: 80
-                    }
-                    Button {
-                        text: "Use in Council"
-                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                        Layout.preferredWidth: 150
-                        enabled: modelCombo_openrouter.count > 0
-                        onClicked: externalModels.select_model("openrouter", slotCombo_openrouter.currentIndex + 1, modelCombo_openrouter.currentText)
-                    }
-                }
-                Label {
-                    id: errLabel_openrouter
-                    text: ""
-                    color: Kirigami.Theme.negativeTextColor
-                    wrapMode: Text.Wrap
-                    Layout.fillWidth: true
-                    font.pointSize: 10
-                    visible: false
                 }
 
-                // Opencode
                 RowLayout {
                     Layout.fillWidth: true
-                    Label { text: "Opencode"; font.bold: true; Layout.preferredWidth: 90 }
-                    ComboBox {
-                        id: modelCombo_opencode
+                    Label {
+                        text: "Gemini Endpoint:"
+                        font.bold: true
+                        Layout.preferredWidth: 150
+                    }
+                    TextField {
+                        id: geminiEndpointField
                         Layout.fillWidth: true
-                        enabled: count > 0
-                        displayText: count > 0 ? currentText : "No models cached — click Fetch"
+                        text: appSettings.get_string("cloud_endpoints/gemini")
+                        placeholderText: "https://generativelanguage.googleapis.com/v1beta/openai"
+                        onEditingFinished: appSettings.set_string("cloud_endpoints/gemini", text)
                     }
                     Button {
-                        text: "Fetch models"
+                        id: geminiEndpointSaveBtn
+                        text: "Save Endpoint"
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                        Layout.preferredWidth: 130
-                        onClicked: externalModels.refresh("opencode")
-                    }
-                    Button {
-                        text: "Clear"
-                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                        Layout.preferredWidth: 80
-                        onClicked: externalModels.clear_cache("opencode")
+                        Layout.preferredWidth: 120
+                        onClicked: {
+                            appSettings.set_string("cloud_endpoints/gemini", geminiEndpointField.text)
+                            successToast.show("Gemini endpoint saved")
+                        }
                     }
                 }
+
                 RowLayout {
                     Layout.fillWidth: true
-                    Label { text: "Council slot:"; Layout.preferredWidth: 90 }
-                    ComboBox {
-                        id: slotCombo_opencode
-                        model: [1, 2, 3]
-                        Layout.preferredWidth: 80
+                    Label {
+                        text: "Kilocode API Key:"
+                        font.bold: true
+                        Layout.preferredWidth: 150
+                    }
+                    TextField {
+                        id: kilocodeKeyField
+                        Layout.fillWidth: true
+                        text: appSettings.get_api_key("kilocode")
+                        echoMode: TextInput.Password
+                        placeholderText: "sk-..."
+                        onEditingFinished: appSettings.set_api_key("kilocode", text)
                     }
                     Button {
-                        text: "Use in Council"
+                        id: kilocodeTestBtn
+                        text: "Save & Test"
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                        Layout.preferredWidth: 150
-                        enabled: modelCombo_opencode.count > 0
-                        onClicked: externalModels.select_model("opencode", slotCombo_opencode.currentIndex + 1, modelCombo_opencode.currentText)
+                        Layout.preferredWidth: 120
+                        onClicked: {
+                            appSettings.set_api_key("kilocode", kilocodeKeyField.text)
+                            externalModels.refresh("kilocode")
+                        }
                     }
                 }
-                Label {
-                    id: errLabel_opencode
-                    text: ""
-                    color: Kirigami.Theme.negativeTextColor
-                    wrapMode: Text.Wrap
+
+                RowLayout {
                     Layout.fillWidth: true
-                    font.pointSize: 10
-                    visible: false
-                }
-
-                Connections {
-                    target: externalModels
-                    function onModels_fetched(provider, ids) {
-                        if (provider === "nvidia") { modelCombo_nvidia.model = ids; errLabel_nvidia.visible = false }
-                        else if (provider === "openrouter") { modelCombo_openrouter.model = ids; errLabel_openrouter.visible = false }
-                        else if (provider === "opencode") { modelCombo_opencode.model = ids; errLabel_opencode.visible = false }
+                    Label {
+                        text: "Kilocode Endpoint:"
+                        font.bold: true
+                        Layout.preferredWidth: 150
                     }
-                    function onCache_cleared(provider) {
-                        if (provider === "nvidia") { modelCombo_nvidia.model = []; errLabel_nvidia.visible = false }
-                        else if (provider === "openrouter") { modelCombo_openrouter.model = []; errLabel_openrouter.visible = false }
-                        else if (provider === "opencode") { modelCombo_opencode.model = []; errLabel_opencode.visible = false }
+                    TextField {
+                        id: kilocodeEndpointField
+                        Layout.fillWidth: true
+                        text: appSettings.get_string("cloud_endpoints/kilocode")
+                        placeholderText: "https://api.kilocode.com"
+                        onEditingFinished: appSettings.set_string("cloud_endpoints/kilocode", text)
                     }
-                    function onModels_error(provider, message) {
-                        if (provider === "nvidia") { errLabel_nvidia.text = message; errLabel_nvidia.visible = true }
-                        else if (provider === "openrouter") { errLabel_openrouter.text = message; errLabel_openrouter.visible = true }
-                        else if (provider === "opencode") { errLabel_opencode.text = message; errLabel_opencode.visible = true }
+                    Button {
+                        id: kilocodeEndpointSaveBtn
+                        text: "Save Endpoint"
+                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                        Layout.preferredWidth: 120
+                        onClicked: {
+                            appSettings.set_string("cloud_endpoints/kilocode", kilocodeEndpointField.text)
+                            successToast.show("Kilocode endpoint saved")
+                        }
                     }
-                }
-
-                Component.onCompleted: {
-                    modelCombo_nvidia.model = externalModels.get_cached_models("nvidia")
-                    modelCombo_openrouter.model = externalModels.get_cached_models("openrouter")
-                    modelCombo_opencode.model = externalModels.get_cached_models("opencode")
                 }
             }
         }
@@ -957,6 +966,196 @@ Kirigami.ScrollablePage {
                 }
             }
         }
+
+        // ── Managed Skills ──
+        Kirigami.AbstractCard {
+            Layout.fillWidth: true
+
+            contentItem: ColumnLayout {
+                id: managedSkillsLayout
+                spacing: Kirigami.Units.smallSpacing
+
+                property var managedSkills: []
+                property var skillsCatalog: []
+
+                Label {
+                    text: "Managed Skills"
+                    font.bold: true
+                    font.pointSize: 14
+                }
+
+                Label {
+                    text: "Select curated MCP skills from the catalog below, then toggle them ON/OFF. Enabled skills will be started automatically."
+                    wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                    font.pointSize: 11
+                }
+
+                // Catalog selection row
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.smallSpacing
+
+                    ComboBox {
+                        id: skillsCatalogCombo
+                        Layout.fillWidth: true
+                        textRole: "name"
+                        model: managedSkillsLayout.skillsCatalog
+
+                        Label {
+                            anchors.centerIn: parent
+                            text: "(No skills in catalog)"
+                            visible: skillsCatalogCombo.count === 0
+                            color: Kirigami.Theme.disabledTextColor
+                        }
+                    }
+
+                    Button {
+                        text: "Add Skill"
+                        Layout.preferredWidth: 120
+                        enabled: skillsCatalogCombo.currentIndex >= 0 && skillsCatalogCombo.count > 0
+                        onClicked: {
+                            var catalog = managedSkillsLayout.skillsCatalog
+                            var idx = skillsCatalogCombo.currentIndex
+                            if (idx < 0 || idx >= catalog.length) return
+                            var selected = catalog[idx]
+
+                            // Avoid duplicates by id
+                            if (managedSkillsLayout.managedSkills.some(function(s) { return s.id === selected.id })) {
+                                errorToast.show("Skill '" + selected.name + "' is already added.")
+                                return
+                            }
+
+                            // Clone the catalog entry, add enabled:false
+                            var newSkill = {
+                                "id": selected.id,
+                                "name": selected.name,
+                                "command": selected.command,
+                                "description": selected.description,
+                                "enabled": false
+                            }
+                            var newList = managedSkillsLayout.managedSkills.slice()
+                            newList.push(newSkill)
+                            managedSkillsLayout.managedSkills = newList
+                            appSettings.set_json_string("mcp/managed_skills", JSON.stringify(newList))
+                        }
+                    }
+                }
+
+                // Active skills list
+                Label {
+                    text: "Added Skills:"
+                    font.bold: true
+                    font.pointSize: 11
+                    topPadding: Kirigami.Units.smallSpacing
+                }
+
+                Repeater {
+                    model: managedSkillsLayout.managedSkills
+
+                    delegate: RowLayout {
+                        id: skillDelegate
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        required property var modelData
+                        required property int index
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 120
+                            spacing: 2
+
+                            Label {
+                                text: modelData.name || "Unknown Skill"
+                                font.bold: true
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+
+                            Label {
+                                text: modelData.description || ""
+                                color: Kirigami.Theme.disabledTextColor
+                                font.pointSize: 9
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                                visible: text.length > 0
+                            }
+                        }
+
+                        TextField {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 200
+                            text: modelData.command || ""
+                            placeholderText: "MCP server command..."
+                            onEditingFinished: {
+                                var list = managedSkillsLayout.managedSkills.slice()
+                                list[index].command = text
+                                managedSkillsLayout.managedSkills = list
+                                appSettings.set_json_string("mcp/managed_skills", JSON.stringify(list))
+                            }
+                        }
+
+                        Switch {
+                            Layout.preferredWidth: 60
+                            checked: modelData.enabled === true
+                            onClicked: {
+                                var list = managedSkillsLayout.managedSkills.slice()
+                                list[index].enabled = checked
+                                managedSkillsLayout.managedSkills = list
+                                appSettings.set_json_string("mcp/managed_skills", JSON.stringify(list))
+                            }
+                        }
+
+                        Button {
+                            text: "Remove"
+                            Layout.preferredWidth: 100
+                            onClicked: {
+                                var list = managedSkillsLayout.managedSkills.slice()
+                                list.splice(index, 1)
+                                managedSkillsLayout.managedSkills = list
+                                appSettings.set_json_string("mcp/managed_skills", JSON.stringify(list))
+                            }
+                        }
+                    }
+                }
+
+                // Fallback label when no skills added
+                Label {
+                    text: "No skills added yet. Select a skill from the catalog above and click Add Skill."
+                    color: Kirigami.Theme.disabledTextColor
+                    font.pointSize: 10
+                    visible: managedSkillsLayout.managedSkills.length === 0
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                }
+
+                Component.onCompleted: {
+                    // Load saved managed skills
+                    var raw = appSettings.get_json_string("mcp/managed_skills")
+                    if (raw && raw.trim().length > 0) {
+                        try {
+                            managedSkills = JSON.parse(raw)
+                        } catch(e) {
+                            console.warn("Failed to parse managed_skills JSON:", e)
+                            managedSkills = []
+                        }
+                    }
+
+                    // Load catalog
+                    var catalogRaw = appSettings.get_skills_catalog()
+                    if (catalogRaw && catalogRaw.trim().length > 0) {
+                        try {
+                            skillsCatalog = JSON.parse(catalogRaw)
+                        } catch(e) {
+                            console.warn("Failed to parse skills catalog:", e)
+                            skillsCatalog = []
+                        }
+                    }
+                }
+            }
+        }
+        // ── end Managed Skills ──
         // ── llama.cpp Update ──
         Kirigami.AbstractCard {
             Layout.fillWidth: true
@@ -1012,7 +1211,170 @@ Kirigami.ScrollablePage {
                 }
             }
         }
+        // Native Agent Skills
+        Kirigami.AbstractCard {
+            Layout.fillWidth: true
 
+            contentItem: ColumnLayout {
+                spacing: Kirigami.Units.smallSpacing
+
+                Label {
+                    text: "Native Agent Skills"
+                    font.bold: true
+                    font.pointSize: 14
+                }
+
+                Label {
+                    text: "Toggle built-in skills that extend the LLM with local Python tools."
+                    font.italic: true
+                    color: Kirigami.Theme.disabledTextColor
+                    wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                }
+
+                Repeater {
+                    id: skillsRepeater
+                    model: skillsManager.get_skills_list()
+
+                    delegate: RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+
+                            Label {
+                                text: modelData.name
+                                font.bold: true
+                                Layout.fillWidth: true
+                                elide: Text.ElideRight
+                            }
+                            Label {
+                                text: modelData.description
+                                font.pointSize: Kirigami.Theme.smallFont.pointSize
+                                color: Kirigami.Theme.disabledTextColor
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                            }
+                        }
+
+                        Switch {
+                            checked: modelData.enabled
+                            onToggled: skillsManager.set_enabled(modelData.id, checked)
+                        }
+
+                        ToolButton {
+                            icon.name: "document-edit"
+                            visible: modelData.is_custom === true
+                            onClicked: {
+                                customSkillSheet.editingFilename = modelData.filename
+                                customSkillSheet.filenameField = modelData.filename
+                                customSkillSheet.codeArea = skillsManager.read_user_skill(modelData.filename)
+                                customSkillSheet.open()
+                            }
+                        }
+                        ToolButton {
+                            icon.name: "edit-delete"
+                            visible: modelData.is_custom === true
+                            onClicked: {
+                                skillsManager.delete_user_skill(modelData.filename)
+                                skillsRepeater.model = skillsManager.get_skills_list()
+                            }
+                        }
+                    }
+                }
+
+                Label {
+                    visible: skillsRepeater.count === 0
+                    text: "No native skills registered."
+                    color: Kirigami.Theme.disabledTextColor
+                    font.italic: true
+                }
+
+                Button {
+                    text: "Create Custom Skill"
+                    icon.name: "list-add"
+                    Layout.fillWidth: true
+                    onClicked: {
+                        customSkillSheet.editingFilename = ""
+                        customSkillSheet.filenameField = ""
+                        customSkillSheet.codeArea = skillsManager.get_skill_template()
+                        customSkillSheet.open()
+                    }
+                }
+            }
+        }
+
+
+    }
+
+    // Custom skill editor dialog
+    Dialog {
+        id: customSkillSheet
+        modal: true
+        closePolicy: Popup.CloseOnEscape
+        width: Math.min(600, parent?.width ?? 600)
+
+        property string editingFilename: ""
+        property alias filenameField: filenameInput.text
+        property alias codeArea: codeEditor.text
+
+        contentItem: ColumnLayout {
+            spacing: Kirigami.Units.smallSpacing
+
+            Label {
+                text: customSkillSheet.editingFilename ? "Edit Custom Skill" : "Create Custom Skill"
+                font.bold: true
+                font.pixelSize: Kirigami.Theme.defaultFont.pixelSize * 1.2
+            }
+            Kirigami.Separator {
+                Layout.fillWidth: true
+                Layout.bottomMargin: Kirigami.Units.smallSpacing
+            }
+
+            Label { text: "Filename:"; font.bold: true }
+            TextField {
+                id: filenameInput
+                Layout.fillWidth: true
+                placeholderText: "my_skill.py"
+                readOnly: customSkillSheet.editingFilename !== ""
+            }
+
+            Label { text: "Code:"; font.bold: true }
+            TextArea {
+                id: codeEditor
+                Layout.fillWidth: true
+                Layout.preferredHeight: 400
+                font.family: "monospace"
+                wrapMode: TextArea.Wrap
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Cancel"
+                    onClicked: customSkillSheet.close()
+                }
+                Button {
+                    text: "Save"
+                    icon.name: "document-save"
+                    onClicked: {
+                        var fn = filenameInput.text.trim()
+                        var code = codeEditor.text
+                        if (!fn.endsWith(".py")) { fn += ".py" }
+                        var ok = skillsManager.save_user_skill(fn, code)
+                        if (ok) {
+                            skillsRepeater.model = skillsManager.get_skills_list()
+                            customSkillSheet.close()
+                        } else {
+                            errorToast.show("Failed to save skill. Check the filename.")
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Model file dialog
@@ -1078,6 +1440,16 @@ Kirigami.ScrollablePage {
     }
     ErrorToast {
         id: errorToast
+        anchors.fill: parent
+    }
+    MessageDialog {
+        id: councilErrorDialog
+        title: "Council Selection Error"
+        text: ""
+        buttons: MessageDialog.Ok
+    }
+    SuccessToast {
+        id: successToast
         anchors.fill: parent
     }
 }

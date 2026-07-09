@@ -181,7 +181,7 @@ def test_council_cloud_correct_keys(qapp, tmp_path, monkeypatch):
     # Mock LlamaClient to capture construction and method calls
     client_calls = []
     class MockCloudLlamaClient:
-        def __init__(self, host="http://localhost", port=8080, api_key=None):
+        def __init__(self, host="http://localhost", port=8080, api_key=None, api_prefix=None):
             self.host = host
             self.port = port
             self.api_key = api_key
@@ -308,7 +308,7 @@ def test_council_mixed_config(qapp, tmp_path, monkeypatch):
     # Mock LlamaClient to handle both local and cloud instantiations
     client_calls = []
     class MockMixedLlamaClient:
-        def __init__(self, host="http://localhost", port=8080, api_key=None):
+        def __init__(self, host="http://localhost", port=8080, api_key=None, api_prefix=None):
             self.host = host
             self.port = port
             self.api_key = api_key
@@ -419,7 +419,7 @@ def test_council_cloud_partial_missing_keys(qapp, tmp_path, monkeypatch):
     # Mock LlamaClient to capture construction and method calls
     client_calls = []
     class MockCloudLlamaClient:
-        def __init__(self, host="http://localhost", port=8080, api_key=None):
+        def __init__(self, host="http://localhost", port=8080, api_key=None, api_prefix=None):
             self.host = host
             self.port = port
             self.api_key = api_key

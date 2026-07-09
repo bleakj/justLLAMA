@@ -12,7 +12,9 @@ class LlamaClient:
         port: int | None = 8080,
         api_key: str | None = None,
         base_url: str | None = None,
+        api_prefix: str = "/v1",
     ):
+        self.api_prefix = api_prefix
         if base_url:
             self._base = base_url.rstrip("/")
         else:
@@ -31,8 +33,8 @@ class LlamaClient:
         return resp.json()
 
     def models(self, timeout: float = 10) -> list[dict]:
-        """GET /v1/models — list available models."""
-        resp = self._session.get(self._url("/v1/models"), timeout=timeout)
+        """GET <api_prefix>/models — list available models."""
+        resp = self._session.get(self._url(f"{self.api_prefix}/models"), timeout=timeout)
         resp.raise_for_status()
         return resp.json().get("data", [])
 
@@ -55,7 +57,7 @@ class LlamaClient:
         timeout: float = 120,
         **kwargs,
     ) -> dict:
-        """POST /v1/chat/completions — OpenAI-compatible chat completion.
+        """POST <api_prefix>/chat/completions — OpenAI-compatible chat completion.
 
         Args:
             messages: List of {"role": str, "content": str}.
@@ -78,7 +80,7 @@ class LlamaClient:
         if tool_choice is not None:
             payload["tool_choice"] = tool_choice
         resp = self._session.post(
-            self._url("/v1/chat/completions"),
+            self._url(f"{self.api_prefix}/chat/completions"),
             json=payload,
             timeout=timeout,
             stream=stream,
@@ -124,7 +126,7 @@ class LlamaClient:
         model: str = "default",
         timeout: float = 30,
     ) -> list[list[float]]:
-        """POST /v1/embeddings — get embeddings for text.
+        """POST <api_prefix>/embeddings — get embeddings for text.
 
         Useful for RAG pipeline when llama-server supports embedding.
         """
@@ -133,19 +135,19 @@ class LlamaClient:
             "model": model,
         }
         resp = self._session.post(
-            self._url("/v1/embeddings"),
+            self._url(f"{self.api_prefix}/embeddings"),
             json=payload,
             timeout=timeout,
         )
         resp.raise_for_status()
         data = resp.json().get("data", [])
         return [item["embedding"] for item in data]
-
     def set_base_url(self, host: str, port: int):
         """Update the server base URL."""
         if not isinstance(port, int) or not (1024 <= port <= 65535):
             raise ValueError(f"Port must be an int in 1024-65535, got {port!r}")
         self._base = f"{host}:{port}"
+
 
     @property
     def base_url(self) -> str:

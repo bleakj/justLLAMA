@@ -339,6 +339,7 @@ def test_chat_manager_signals(qapp, monkeypatch):
         generation_complete = Signal(list)
         error_occurred = Signal(str)
         tool_call_detected = Signal(str, str)
+        reasoning_chunk_received = Signal(str)
 
         def __init__(self, *args, **kwargs):
             super().__init__()
@@ -381,6 +382,7 @@ def test_chat_manager_stop_generation(qapp, monkeypatch):
         generation_complete = Signal(list)
         error_occurred = Signal(str)
         tool_call_detected = Signal(str, str)
+        reasoning_chunk_received = Signal(str)
 
         def __init__(self, *args, **kwargs):
             super().__init__()

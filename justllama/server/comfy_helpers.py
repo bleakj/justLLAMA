@@ -21,9 +21,11 @@ COMFYUI_OUTPUT = COMFYUI_DIR / "output"
 
 # ── lifecycle helpers ──────────────────────────────────────────────────────
 
-def wait_for_comfy_health(timeout: int) -> bool:
+def wait_for_comfy_health(comfy_proc: subprocess.Popen, timeout: int) -> bool:
     """Poll ComfyUI health endpoint until it responds or timeout."""
     for _ in range(timeout):
+        if comfy_proc.poll() is not None:
+            return False  # ComfyUI crashed
         try:
             resp = urllib.request.urlopen(HEALTH_URL, timeout=2)
             if resp.status == 200:
@@ -32,13 +34,13 @@ def wait_for_comfy_health(timeout: int) -> bool:
             pass
         time.sleep(1)
     return False
-
-
-def wait_for_comfy_execution(prompt_id: str, timeout: int) -> dict | None:
+def wait_for_comfy_execution(comfy_proc: subprocess.Popen, prompt_id: str, timeout: int) -> dict | None:
     """Poll ComfyUI /history until the prompt_id finishes or timeout."""
     history_url = f"http://127.0.0.1:{PORT}/history/{prompt_id}"
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        if comfy_proc.poll() is not None:
+            return None  # ComfyUI crashed
         try:
             resp = urllib.request.urlopen(history_url, timeout=5)
             data = json.loads(resp.read().decode())

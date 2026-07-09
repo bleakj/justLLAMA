@@ -115,7 +115,7 @@ class VideoGenRunner(QThread):
 
         # 3. Wait for healthy
         self.progress_update.emit("Waiting for video engine...")
-        if not wait_for_comfy_health(_VIDEO_LAUNCH_TIMEOUT):
+        if not wait_for_comfy_health(comfy_proc, _VIDEO_LAUNCH_TIMEOUT):
             self.error.emit("Video generation engine did not start within 60s")
             stop_comfyui(comfy_proc)
             self._restore_server(was_running)
@@ -195,7 +195,7 @@ class VideoGenRunner(QThread):
             return None
 
         # Wait for completion (longer timeout for video)
-        history = wait_for_comfy_execution(effective_id, _VIDEO_GENERATION_TIMEOUT)
+        history = wait_for_comfy_execution(comfy_proc, effective_id, _VIDEO_GENERATION_TIMEOUT)
         if history is None:
             self.error.emit("Video generation timed out after 5 minutes")
             return None

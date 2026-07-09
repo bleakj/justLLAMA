@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QObject, QThread, Signal, Slot
-from justllama.server.providers import get_provider, provider_base_url
 from justllama.server.client import LlamaClient
 from justllama.config.settings import AppSettings
 from justllama.server.providers import get_provider, provider_base_url, PROVIDER_IDS
@@ -26,7 +25,8 @@ class _FetchRunner(QThread):
                 self.error.emit(self._pid, "API key not configured")
                 return
             base = provider_base_url(self._pid, self._settings)
-            client = LlamaClient(base_url=base, api_key=key)
+            prov = get_provider(self._pid)
+            client = LlamaClient(base_url=base, api_key=key, api_prefix=prov.api_prefix)
             data = client.models()                       # list of {"id": ...}
             ids = [m["id"] for m in data if isinstance(m, dict) and m.get("id")]
             if not ids:
@@ -79,9 +79,29 @@ class ExternalModelsManager(QObject):
         self._settings.set_list(_CACHE_KEY.format(provider_id), [])
         self.cache_cleared.emit(provider_id)
 
-    @Slot(str, int, str)
-    def select_model(self, provider_id: str, slot: int, model_id: str):
-        """Write `provider:model` into council/model_<slot> (1-based)."""
+    @Slot(str, int, str, result=str)
+    def select_model(self, provider_id: str, slot: int, model_id: str) -> str:
+        """Write `provider:model` into council/model_<slot> (1-based). Returns error message or empty string."""
         if not (1 <= slot <= 3):
-            raise ValueError(f"slot must be 1..3, got {slot}")
+            return f"slot must be 1..3, got {slot}"
+        if not model_id or model_id == "No models cached — click Fetch":
+            return "No model selected. Fetch models and pick one first."
         self._settings.set_string(f"council/model_{slot}", f"{provider_id}:{model_id}")
+        return ""
+
+    @Slot(str, result=list)
+    def get_enabled_models(self, provider_id: str) -> list:
+        """Return the list of enabled model IDs for this provider."""
+        return self._settings.get_list(f"cloud_models_enabled/{provider_id}")
+
+    @Slot(str, str, bool)
+    def set_model_enabled(self, provider_id: str, model_id: str, enabled: bool):
+        """Enable or disable a specific model for a provider."""
+        key = f"cloud_models_enabled/{provider_id}"
+        ids = self._settings.get_list(key)
+        if enabled:
+            if model_id not in ids:
+                ids.append(model_id)
+        else:
+            ids = [m for m in ids if m != model_id]
+        self._settings.set_list(key, ids)

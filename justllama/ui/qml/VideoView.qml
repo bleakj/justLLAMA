@@ -235,28 +235,16 @@ Kirigami.ScrollablePage {
             border.color: safeBorderColor
             border.width: 1
 
+            // Determine if preview is animated (webp/gif)
+            property bool isAnimated: previewPath.match(/\.(webp|gif)$/i) !== null
+
             AnimatedImage {
                 anchors.fill: parent
                 anchors.margins: 4
                 source: previewPath.length > 0 ? "file://" + previewPath : ""
                 fillMode: Image.PreserveAspectFit
                 playing: true
-                visible: previewPath.length > 0 && status === Image.Ready
-
-                // Save button overlay
-                MouseArea {
-                    anchors.fill: parent
-                    acceptedButtons: Qt.RightButton
-                    onClicked: saveMenu.open()
-                }
-
-                Menu {
-                    id: saveMenu
-                    MenuItem {
-                        text: "Save As..."
-                        onTriggered: saveDialog.open()
-                    }
-                }
+                visible: previewPath.length > 0 && parent.isAnimated && status === Image.Ready
             }
 
             // Fallback: show static image for non-WEBP formats (e.g. MP4)
@@ -265,7 +253,22 @@ Kirigami.ScrollablePage {
                 anchors.margins: 4
                 source: previewPath.length > 0 ? "file://" + previewPath : ""
                 fillMode: Image.PreserveAspectFit
-                visible: previewPath.length > 0
+                visible: previewPath.length > 0 && !parent.isAnimated
+            }
+
+            // Save button overlay — works for both animated and static
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.RightButton
+                onClicked: saveMenu.open()
+            }
+
+            Menu {
+                id: saveMenu
+                MenuItem {
+                    text: "Save As..."
+                    onTriggered: saveDialog.open()
+                }
             }
 
             BusyIndicator {

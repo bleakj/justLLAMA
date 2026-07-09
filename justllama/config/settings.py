@@ -3,6 +3,8 @@
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, QObject, Signal, Slot
+import json
+
 
 
 class AppSettings(QObject):
@@ -52,7 +54,7 @@ class AppSettings(QObject):
             "chat/voice_input_enabled": False,
             "chat/voice_model": "base.en",
             "chat/voice_send_automatically": False,
-            "mcp/servers": [],
+            "skills/user_directory": str(Path.home() / ".local" / "share" / "justllama" / "skills"),
             "cloud_endpoints/opencode": "https://api.opencode.com",
         }
         for key, default in defaults.items():
@@ -105,6 +107,53 @@ class AppSettings(QObject):
         self._s.setValue(key, value)
         self.settings_changed.emit(key, value)
 
+    # --- JSON string (complex structured data) ---
+
+    @Slot(str, result=str)
+    def get_json_string(self, key: str) -> str:
+        val = self._s.value(key, "")
+        if val is None:
+            return ""
+        return str(val)
+
+    @Slot(str, str)
+    def set_json_string(self, key: str, value: str):
+        self._s.setValue(key, value)
+        self.settings_changed.emit(key, value)
+
+    # --- Skills catalog (static, curated) ---
+
+    @Slot(result=str)
+    def get_skills_catalog(self) -> str:
+        """Return a JSON-serialized list of curated MCP skills."""
+        catalog = [
+            {
+                "id": "maestro",
+                "name": "Maestro Workflow",
+                "command": "npx -y maestro-workflow-mcp",
+                "description": "Provides planning, execution, and memory commands from maestroskills.dev"
+            },
+            {
+                "id": "gemma-dev",
+                "name": "Gemma-Dev",
+                "command": "npx -y @google-gemma/gemma-skills --skill gemma-dev",
+                "description": "Official Gemma technical blueprint and ecosystem knowledge"
+            },
+            {
+                "id": "playwright",
+                "name": "Playwright Automation",
+                "command": "npx -y @playwright/mcp-server",
+                "description": "Browser automation and testing"
+            },
+            {
+                "id": "filesystem",
+                "name": "Local Filesystem",
+                "command": "npx -y @modelcontextprotocol/server-filesystem /path/to/expose",
+                "description": "Read and write to local directories"
+            }
+        ]
+        return json.dumps(catalog)
+
     # --- Convenience properties ---
 
     @property
@@ -141,6 +190,9 @@ class AppSettings(QObject):
     @property
     def mcp_servers(self) -> list[str]:
         return self.get_list("mcp/servers")
+    @property
+    def user_skills_directory(self) -> str:
+        return self.get_string("skills/user_directory")
 
     def get_all_server_config(self) -> dict:
         """Return all server-related settings as a dict."""

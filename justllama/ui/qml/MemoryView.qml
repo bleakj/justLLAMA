@@ -9,6 +9,7 @@ Kirigami.Page {
 
     property var memories: []
     property string selectedCategory: "all"
+    property bool isMemoryEnabled: appSettings.get_bool("memory/enabled")
     property var statsObj: (function() {
         try { return JSON.parse(memoryManager.stats()) }
         catch (e) {
@@ -17,6 +18,12 @@ Kirigami.Page {
         }
     })()
 
+    Connections {
+        target: appSettings
+        function onSettings_changed(key, value) {
+            if (key === "memory/enabled") memoryPage.isMemoryEnabled = value
+        }
+    }
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: Kirigami.Units.largeSpacing
@@ -35,11 +42,11 @@ Kirigami.Page {
 
             Label {
                 text: "Enabled:"
-                color: memoryManager.is_enabled() ? Kirigami.Theme.highlightColor : Kirigami.Theme.disabledTextColor
-                font.bold: memoryManager.is_enabled()
+                color: memoryPage.isMemoryEnabled ? Kirigami.Theme.highlightColor : Kirigami.Theme.disabledTextColor
+                font.bold: memoryPage.isMemoryEnabled
             }
             Switch {
-                checked: memoryManager.is_enabled()
+                checked: memoryPage.isMemoryEnabled
                 onCheckedChanged: {
                     memoryManager.set_enabled(checked)
                     appSettings.set_bool("memory/enabled", checked)

@@ -10,7 +10,15 @@ Kirigami.Page {
 
     property var documents: []
     property int chunkCount: 0
+    property bool isRagEnabled: appSettings.get_bool("rag/enabled")
     Component.onCompleted: refreshCount()
+
+    Connections {
+        target: appSettings
+        function onSettings_changed(key, value) {
+            if (key === "rag/enabled") ragPage.isRagEnabled = value
+        }
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -30,11 +38,11 @@ Kirigami.Page {
 
             Label {
                 text: "Enabled:"
-                color: appSettings.get_bool("rag/enabled") ? Kirigami.Theme.highlightColor : Kirigami.Theme.disabledTextColor
-                font.bold: appSettings.get_bool("rag/enabled")
+                color: ragPage.isRagEnabled ? Kirigami.Theme.highlightColor : Kirigami.Theme.disabledTextColor
+                font.bold: ragPage.isRagEnabled
             }
             Switch {
-                checked: appSettings.get_bool("rag/enabled")
+                checked: ragPage.isRagEnabled
                 onCheckedChanged: appSettings.set_bool("rag/enabled", checked)
                 indicator: Rectangle {
                     implicitWidth: 48

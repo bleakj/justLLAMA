@@ -43,7 +43,11 @@ def test_provider_registry():
     assert get_provider("nvidia").base_url == "https://integrate.api.nvidia.com"
     assert get_provider("openrouter").base_url == "https://openrouter.ai/api"
     assert get_provider("opencode").base_url == "https://api.opencode.com"
-    assert PROVIDER_IDS == ("nvidia", "openrouter", "opencode")
+    assert get_provider("gemini").base_url == "https://generativelanguage.googleapis.com/v1beta/openai"
+    assert get_provider("gemini").api_prefix == ""
+    assert get_provider("kilocode").base_url == "https://api.kilocode.com"
+    assert get_provider("kilocode").api_prefix == "/v1"
+    assert PROVIDER_IDS == ("nvidia", "openrouter", "opencode", "gemini", "kilocode")
     with pytest.raises(ValueError):
         get_provider("bogus")
 
@@ -121,5 +125,5 @@ def test_select_model_writes_council_slot(qapp, tmp_path, monkeypatch):
     manager = ExternalModelsManager(settings)
     manager.select_model("nvidia", 2, "meta/llama-3")
     assert settings.get_string("council/model_2") == "nvidia:meta/llama-3"
-    with pytest.raises(ValueError):
-        manager.select_model("nvidia", 9, "x")
+    result = manager.select_model("nvidia", 9, "x")
+    assert result == "slot must be 1..3, got 9"

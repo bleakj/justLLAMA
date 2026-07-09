@@ -8,7 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QThread, Signal, Slot, Property
 
 from justllama.server.client import LlamaClient
-from justllama.server.providers import provider_base_url
+from justllama.server.providers import get_provider, provider_base_url, PROVIDER_IDS
 
 
 class CouncilRunner(QThread):
@@ -63,7 +63,7 @@ class CouncilRunner(QThread):
                 continue
 
             # Intercept cloud API models
-            if model_path.startswith(("nvidia:", "openrouter:", "opencode:")):
+            if model_path.startswith(tuple(f"{p}:" for p in PROVIDER_IDS)):
                 try:
                     provider, actual_model = model_path.split(":", 1)
                     api_key = self.settings.get_api_key(provider)
@@ -75,7 +75,8 @@ class CouncilRunner(QThread):
                     self.progress_update.emit(f"Querying Council Model {i}/3 ({provider}): {actual_model}...")
                     
                     host = provider_base_url(provider, self.settings)
-                    cloud_client = LlamaClient(host=host, port=None, api_key=api_key)
+                    prov = get_provider(provider)
+                    cloud_client = LlamaClient(host=host, port=None, api_key=api_key, api_prefix=prov.api_prefix)
                     resp = cloud_client.chat_completion(
                         messages=[{"role": "user", "content": self.prompt}],
                         model=actual_model,

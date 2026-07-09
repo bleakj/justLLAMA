@@ -10,7 +10,14 @@ Kirigami.Page {
     property var models: []
     property string selectedModel: ""
     property string downloadStatus: ""
+    property string modelsDir: appSettings.get_string("models/directory")
 
+    Connections {
+        target: appSettings
+        function onSettings_changed(key, value) {
+            if (key === "models/directory") modelsPage.modelsDir = value
+        }
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -113,7 +120,7 @@ Kirigami.Page {
             Label {
                 anchors.centerIn: parent
                 visible: modelList.count === 0
-                text: "No models found in:\n" + appSettings.get_string("models/directory")
+                text: "No models found in:\n" + modelsPage.modelsDir
                 horizontalAlignment: Text.AlignHCenter
                 color: Kirigami.Theme.disabledTextColor
             }

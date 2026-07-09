@@ -11,6 +11,8 @@ _PROVIDER_ENV = {
     "nvidia": "NVIDIA_API_KEY",
     "openrouter": "OPENROUTER_API_KEY",
     "opencode": "OPENCODE_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+    "kilocode": "KILOCODE_API_KEY",
 }
 
 

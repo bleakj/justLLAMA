@@ -1,5 +1,6 @@
 """llama-server process lifecycle management."""
 
+import contextlib
 import shutil
 import signal
 import subprocess
@@ -21,7 +22,10 @@ class _ServerLogReader(QThread):
 
     def run(self):
         while self._running:
-            line = self._stream.readline()
+            try:
+                line = self._stream.readline()
+            except ValueError:
+                break  # pipe closed by _cleanup()
             if not line:
                 break
             self.line_read.emit(line.rstrip("\n"))
@@ -236,13 +240,6 @@ class ServerManager(QObject):
         self.server_stopped.emit()
         return True
 
-    @Slot(result=bool)
-    def restart(self) -> bool:
-        """Restart the server."""
-        # Save current config before stopping
-        self.stop()
-        # Caller should call start() again after this returns
-        return True
 
     @Slot(result=int)
     def port(self) -> int:
@@ -284,15 +281,13 @@ class ServerManager(QObject):
         try:
             import socket
             # Check if port is in use
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(1)
-            result = sock.connect_ex(('127.0.0.1', port))
-            sock.close()
+            with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+                sock.settimeout(1)
+                result = sock.connect_ex(('127.0.0.1', port))
             if result != 0:
                 return  # Port is free
 
             self.log_line.emit(f"Port {port} is occupied, killing existing process...")
-            import subprocess
             # Find PID using the port. fuser is part of psmisc on most
             # distros; we degrade gracefully if it isn't available.
             try:

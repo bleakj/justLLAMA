@@ -106,6 +106,7 @@ Kirigami.Page {
                 history.push({"role": "user", "content": synthesis_prompt})
             }
             messages = messages.concat(history)
+            messages = consolidateSystemMessages(messages)
             callChatCompletion(messages)
         }
         function onError(msg) {
@@ -184,9 +185,16 @@ Kirigami.Page {
             }
             chatPage.parseBuildOps(streamingText.text)
         }
+        function onReasoning_chunk_received(chunk) {
+            streamingReasoningText.text += chunk
+            if (!streamingReasoningToggle.checked) {
+                streamingReasoningToggle.checked = true
+            }
+        }
         function onGeneration_complete(updatedHistory) {
             isGenerating = false
             streamingText.text = ""
+            streamingReasoningText.text = ""
             fetchContextUsage()
             
             var originalCount = chatPage.originalMessagesCount || 0
@@ -197,15 +205,22 @@ Kirigami.Page {
             }
 
             var finalContent = ""
+            var finalReasoning = ""
             for (var i = 0; i < newMsgs.length; i++) {
                 var msg = newMsgs[i]
                 if (msg.role === "assistant" && msg.content) {
                     finalContent += msg.content
                 }
+                if (msg.role === "assistant" && msg.reasoning_content) {
+                    finalReasoning += msg.reasoning_content
+                }
             }
             
             if (finalContent.length > 0) {
                 var assistantMsg = {"role": "assistant", "content": finalContent}
+                if (finalReasoning.length > 0) {
+                    assistantMsg.reasoning_content = finalReasoning
+                }
                 messageHistory.push(assistantMsg)
                 messageHistoryChanged()
             }
@@ -286,6 +301,43 @@ Kirigami.Page {
                                 Layout.maximumHeight: 300
                                 Layout.fillWidth: true
                                 playing: true
+                            }
+                            // Thinking section (collapsible, only for messages with reasoning_content)
+                            ColumnLayout {
+                                visible: modelData.reasoning_content && modelData.reasoning_content.length > 0
+                                spacing: Kirigami.Units.smallSpacing
+                                Layout.fillWidth: true
+
+                                Button {
+                                    id: reasoningToggle
+                                    text: checked ? "▾ Hide Thinking" : "▸ Show Thinking"
+                                    checkable: true
+                                    checked: false
+                                    flat: true
+                                    font.pointSize: 9
+                                    icon.name: checked ? "go-down" : "go-next"
+                                }
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.leftMargin: Kirigami.Units.largeSpacing
+                                    visible: reasoningToggle.checked
+                                    color: chatPage.safeBgColor
+                                    radius: Kirigami.Units.cornerRadius
+                                    border.color: chatPage.safeBorderColor
+                                    border.width: 1
+                                    implicitHeight: reasoningLabel.implicitHeight + Kirigami.Units.smallSpacing * 2
+
+                                    Label {
+                                        id: reasoningLabel
+                                        anchors.fill: parent
+                                        anchors.margins: Kirigami.Units.smallSpacing
+                                        text: modelData.reasoning_content
+                                        wrapMode: Text.Wrap
+                                        font.italic: true
+                                        color: chatPage.safeDisabledColor
+                                    }
+                                }
                             }
                             Label {
                                 text: modelData.content
@@ -456,19 +508,64 @@ Kirigami.Page {
             // Streaming response area
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: streamingText.height + Kirigami.Units.largeSpacing * 2
+                Layout.preferredHeight: streamingLayout.implicitHeight + Kirigami.Units.largeSpacing * 2
                 visible: isGenerating
                 color: safeAltBgColor
                 border.color: chatPage.modeAccentColor
                 border.width: 1
                 radius: Kirigami.Units.cornerRadius
 
-                Label {
-                    id: streamingText
+                ColumnLayout {
+                    id: streamingLayout
                     anchors.fill: parent
                     anchors.margins: Kirigami.Units.largeSpacing
-                    text: "Generating..."
-                    wrapMode: Text.Wrap
+                    spacing: Kirigami.Units.smallSpacing
+
+                    // Thinking section (collapsible, visible once reasoning starts streaming)
+                    ColumnLayout {
+                        id: streamingReasoningLayout
+                        visible: streamingReasoningText.text.length > 0
+                        spacing: Kirigami.Units.smallSpacing
+                        Layout.fillWidth: true
+
+                        Button {
+                            id: streamingReasoningToggle
+                            text: checked ? "▾ Hide Thinking" : "▸ Show Thinking"
+                            checkable: true
+                            checked: true
+                            flat: true
+                            font.pointSize: 9
+                            icon.name: checked ? "go-down" : "go-next"
+                        }
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: Kirigami.Units.largeSpacing
+                            visible: streamingReasoningToggle.checked
+                            color: chatPage.safeBgColor
+                            radius: Kirigami.Units.cornerRadius
+                            border.color: chatPage.safeBorderColor
+                            border.width: 1
+                            implicitHeight: streamingReasoningText.implicitHeight + Kirigami.Units.smallSpacing * 2
+
+                            Label {
+                                id: streamingReasoningText
+                                anchors.fill: parent
+                                anchors.margins: Kirigami.Units.smallSpacing
+                                text: ""
+                                wrapMode: Text.Wrap
+                                font.italic: true
+                                color: chatPage.safeDisabledColor
+                            }
+                        }
+                    }
+
+                    Label {
+                        id: streamingText
+                        Layout.fillWidth: true
+                        text: "Generating..."
+                        wrapMode: Text.Wrap
+                    }
                 }
             }
 
@@ -593,11 +690,22 @@ Kirigami.Page {
 
                 // Header
                 Label {
+                    id: titleLabel
                     text: "justLLAMA"
                     font.bold: true
                     font.pointSize: 16
-                    color: chatPage.modeAccentColor
                     Layout.alignment: Qt.AlignHCenter
+
+                    property real hue: 0.0
+                    color: chatPage.isGenerating ? Qt.hsva(hue, 0.85, 0.9, 1.0) : chatPage.modeAccentColor
+
+                    NumberAnimation on hue {
+                        from: 0.0
+                        to: 1.0
+                        duration: 2000
+                        loops: Animation.Infinite
+                        running: chatPage.isGenerating
+                    }
                 }
                 Label {
                     text: chatPage.modeName
@@ -898,6 +1006,22 @@ Kirigami.Page {
         pendingOperationsChanged()
     }
 
+    function consolidateSystemMessages(messagesArray) {
+        var sysParts = []
+        var newMessages = []
+        for (var i = 0; i < messagesArray.length; i++) {
+            if (messagesArray[i].role === "system") {
+                sysParts.push(messagesArray[i].content)
+            } else {
+                newMessages.push(messagesArray[i])
+            }
+        }
+        if (sysParts.length > 0) {
+            newMessages.unshift({"role": "system", "content": sysParts.join("\n\n")})
+        }
+        return newMessages
+    }
+
     function sendMessage() {
         var text = inputField.text.trim()
         if (text.length === 0 || isGenerating) return
@@ -983,11 +1107,14 @@ Kirigami.Page {
         
         var history = JSON.parse(memoryManager.get_short_term_history(-1))
         messages = messages.concat(history)
+        messages = consolidateSystemMessages(messages)
+
         
 
         chatPage.activeGenerationMode = 0
         // Clear any leftover text (e.g. "ERROR: ...") so the first chunk replaces it cleanly.
         streamingText.text = "Generating..."
+        streamingReasoningText.text = ""
         chatPage.originalMessagesCount = messages.length
         isGenerating = true
         var modelPath = appSettings.get_string("server/model_path")

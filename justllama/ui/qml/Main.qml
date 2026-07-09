@@ -31,34 +31,39 @@ Kirigami.ApplicationWindow {
                 onTriggered: mainStack.currentIndex = 1
             },
             Kirigami.Action {
+                text: "Cloud Models"
+                icon.name: "folder-cloud"
+                onTriggered: mainStack.currentIndex = 2
+            },
+            Kirigami.Action {
                 text: "RAG"
                 icon.name: "folder-documents"
-                onTriggered: mainStack.currentIndex = 2
+                onTriggered: mainStack.currentIndex = 3
             },
             Kirigami.Action {
                 text: "Memory"
                 icon.name: "user-group-properties"
-                onTriggered: mainStack.currentIndex = 3
+                onTriggered: mainStack.currentIndex = 4
             },
             Kirigami.Action {
                 text: "Settings"
                 icon.name: "configure"
-                onTriggered: mainStack.currentIndex = 4
+                onTriggered: mainStack.currentIndex = 5
             },
             Kirigami.Action {
                 text: "Images"
                 icon.name: "image-x-generic"
-                onTriggered: mainStack.currentIndex = 5
+                onTriggered: mainStack.currentIndex = 6
             },
             Kirigami.Action {
                 text: "Videos"
                 icon.name: "video-display"
-                onTriggered: mainStack.currentIndex = 6
+                onTriggered: mainStack.currentIndex = 7
             },
             Kirigami.Action {
                 text: "API"
                 icon.name: "network-server"
-                onTriggered: mainStack.currentIndex = 7
+                onTriggered: mainStack.currentIndex = 8
             },
 
             Kirigami.Action {
@@ -78,7 +83,7 @@ Kirigami.ApplicationWindow {
             anchors.fill: parent
 
             Repeater {
-                model: ["Chat", "Models", "RAG", "Memory", "Settings", "Images", "Videos", "API"]
+                model: ["Chat", "Models", "Cloud Models", "RAG", "Memory", "Settings", "Images", "Videos", "API"]
                 ToolButton {
                     required property string modelData
                     required property int index
@@ -105,6 +110,7 @@ Kirigami.ApplicationWindow {
 
         ChatView { objectName: "chatView" }
         ModelBrowser { objectName: "modelBrowser" }
+        CloudModelsView {}
         RAGView {}
         MemoryView {}
         SettingsView {}

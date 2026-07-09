@@ -1,4 +1,6 @@
 import asyncio
+import json
+
 import threading
 import shlex
 from contextlib import AsyncExitStack
@@ -43,20 +45,13 @@ class McpManager(QObject):
         self._loop.run_forever()
 
     def connect_servers(self):
-        """Trigger connection to configured MCP servers asynchronously.
-
-        No-op when no servers are configured, so launch with an empty
-        mcp/servers list does not attempt a connection.
-        """
-        if not [s for s in self._settings.mcp_servers if s.strip()]:
-            return
+        """Trigger connection to configured MCP servers asynchronously."""
         asyncio.run_coroutine_threadsafe(self._connect_servers_async(), self._loop)
 
     def _on_settings_changed(self, key: str, value):
-        if key == "mcp/servers":
-            print(f"[MCP] Config changed: mcp/servers={value}. Reconnecting...")
+        if key in ("mcp/servers", "mcp/managed_skills"):
+            print(f"[MCP] Config changed: {key}={value}. Reconnecting...")
             self.connect_servers()
-
     async def _connect_servers_async(self):
         if self._lock is None:
             self._lock = asyncio.Lock()
@@ -68,6 +63,20 @@ class McpManager(QObject):
             settings = AppSettings()
             servers = settings.mcp_servers
             print(f"[MCP] Connecting to servers: {servers}")
+            # Merge enabled managed skills into the server list
+            try:
+                managed_skills_json = settings.get_json_string("mcp/managed_skills")
+                if managed_skills_json:
+                    managed_skills = json.loads(managed_skills_json)
+                    if isinstance(managed_skills, list):
+                        for skill in managed_skills:
+                            if isinstance(skill, dict) and skill.get("enabled"):
+                                cmd = skill.get("command", "").strip()
+                                if cmd:
+                                    servers.append(cmd)
+            except (json.JSONDecodeError, Exception) as e:
+                print(f"[MCP] Failed to parse managed_skills: {e}")
+            print(f"[MCP] Full server list (including enabled skills): {servers}")
             for server_str in servers:
                 if not server_str.strip():
                     continue
