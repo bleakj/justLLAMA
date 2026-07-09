@@ -170,6 +170,12 @@ class ImageGenRunner(QThread):
         if history is None:
             self.error.emit("Image generation timed out")
             return None
+        if history.get("status") == "error":
+            self.error.emit(
+                "Image generation failed: "
+                + (history.get("exception_message") or "unknown ComfyUI error")
+            )
+            return None
 
         # Find the output file
         # SaveImage node outputs are under history["outputs"][node_id]["images"]
@@ -243,6 +249,8 @@ class ImageGenManager(QObject):
         self.server_manager = server_manager
         self._runner: ImageGenRunner | None = None
         self._workflow_template: dict | None = None
+        self._last_output: str | None = None
+        self._last_error: str | None = None
         self._load_workflow()
 
     # ── public API ────────────────────────────────────────────────────
@@ -277,9 +285,13 @@ class ImageGenManager(QObject):
             prompt.strip(), self._workflow_template,
             model_name, self.server_manager, self
         )
+        self._last_output = None
+        self._last_error = None
         self._runner.progress_update.connect(self.progress_update.emit)
         self._runner.generation_complete.connect(self.generation_complete.emit)
+        self._runner.generation_complete.connect(lambda p: setattr(self, "_last_output", p))
         self._runner.error.connect(self.error.emit)
+        self._runner.error.connect(lambda m: setattr(self, "_last_error", m))
         self._runner.start()
 
     @Slot(result=list)
@@ -298,6 +310,58 @@ class ImageGenManager(QObject):
             self._runner.stop()
             self._runner.wait()
 
+    @Slot(str)
+    def generate_from_workflow(self, workflow_json: str):
+        """Run image generation from a raw ComfyUI API-format workflow JSON.
+
+        Unlike :meth:`generate` (which patches the static ``flux_workflow.json``
+        template), this accepts a complete workflow authored by the agent /
+        LLM. ``PROMPT_PLACEHOLDER`` / ``MODEL_PLACEHOLDER`` are still patched if
+        present, so a partially-templated workflow works too.
+
+        Returns nothing — connect to ``generation_complete`` / ``error`` signals.
+        """
+        if self._runner and self._runner.isRunning():
+            self.error.emit("Already generating an image — wait for completion")
+            return
+
+        try:
+            workflow = json.loads(workflow_json)
+        except (json.JSONDecodeError, TypeError) as e:
+            self.error.emit(f"Invalid workflow JSON: {e}")
+            return
+        if not isinstance(workflow, dict) or not workflow:
+            self.error.emit("Workflow JSON must be a non-empty object of nodes")
+            return
+
+        selected = self._selected_model_path()
+        if not selected:
+            self.error.emit("No image model selected")
+            return
+        model_name = Path(selected).name
+
+        self._runner = ImageGenRunner(
+            "", workflow,
+            model_name, self.server_manager, self
+        )
+        self._runner.progress_update.connect(self.progress_update.emit)
+        self._runner.generation_complete.connect(self.generation_complete.emit)
+        self._runner.generation_complete.connect(lambda p: setattr(self, "_last_output", p))
+        self._runner.error.connect(self.error.emit)
+        self._runner.error.connect(lambda m: setattr(self, "_last_error", m))
+        self._runner.start()
+
+    def wait_for_generation(self, cancel_check=None) -> tuple[str | None, str | None]:
+        """Block until the current generation thread finishes.
+
+        Returns ``(output_path, error_message)`` — exactly one is non-None.
+        Intended for use from a blocking skill/tool call (the caller must be a
+        different thread than the runner itself).
+        """
+        if self._runner is None:
+            return None, "No generation has been started"
+        self._runner.wait()
+        return self._last_output, self._last_error
     @Slot(str)
     def select_model(self, path: str):
         """Persist the selected image model path."""

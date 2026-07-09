@@ -262,11 +262,15 @@ class MySkill(AgentSkill):
         if skill is None:
             return f"Error: no native skill named '{name}'"
 
+        # Allow a skill to request a longer execution budget (e.g. ComfyUI
+        # generation can take several minutes).
+        effective_timeout = getattr(skill, "timeout", timeout)
+
         try:
             future = self._executor.submit(skill.execute, args, cancel_check)
-            return future.result(timeout=timeout)
+            return future.result(timeout=effective_timeout)
         except FutureTimeout:
-            return f"Error: skill '{name}' timed out after {timeout}s"
+            return f"Error: skill '{name}' timed out after {effective_timeout}s"
         except Exception as e:
             tb = traceback.format_exc()
             print(f"[SkillsManager] Skill '{name}' raised: {e}\n{tb}")

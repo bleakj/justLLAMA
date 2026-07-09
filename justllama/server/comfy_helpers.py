@@ -35,7 +35,15 @@ def wait_for_comfy_health(comfy_proc: subprocess.Popen, timeout: int) -> bool:
         time.sleep(1)
     return False
 def wait_for_comfy_execution(comfy_proc: subprocess.Popen, prompt_id: str, timeout: int) -> dict | None:
-    """Poll ComfyUI /history until the prompt_id finishes or timeout."""
+    """Poll ComfyUI /history until the prompt_id finishes or timeout.
+
+    On success returns the history entry dict (with ``outputs`` when the
+    prompt produced files). On failure returns a dict tagged with
+    ``"status": "error"`` carrying ComfyUI's error details (``status_str``,
+    ``node_errors``, ``exception_message``) so callers can surface a
+    diagnostic to the user or feed it back to an agent for autonomous
+    troubleshooting.
+    """
     history_url = f"http://127.0.0.1:{PORT}/history/{prompt_id}"
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -45,11 +53,33 @@ def wait_for_comfy_execution(comfy_proc: subprocess.Popen, prompt_id: str, timeo
             resp = urllib.request.urlopen(history_url, timeout=5)
             data = json.loads(resp.read().decode())
             if prompt_id in data:
-                return data[prompt_id]
+                entry = data[prompt_id]
+                # A finished-but-failed run reports a non-null "status" payload.
+                status = entry.get("status")
+                if isinstance(status, dict) and status.get("status_str") == "error":
+                    return {
+                        "status": "error",
+                        "status_str": "error",
+                        "node_errors": status.get("messages", []),
+                        "exception_message": _extract_exception(status.get("messages", [])),
+                    }
+                return entry
         except Exception:
             pass
         time.sleep(1)
     return None
+
+
+def _extract_exception(messages: list) -> str:
+    """Pull the human-readable exception text out of ComfyUI's status messages."""
+    for msg in messages:
+        # Messages are [["data", ...], "text"] tuples; the text often contains
+        # the exception type + message.
+        if isinstance(msg, (list, tuple)) and len(msg) >= 2 and isinstance(msg[-1], str):
+            text = msg[-1]
+            if "Error" in text or "Exception" in text:
+                return text
+    return ""
 
 
 def launch_comfyui() -> subprocess.Popen | None:

@@ -199,6 +199,12 @@ class VideoGenRunner(QThread):
         if history is None:
             self.error.emit("Video generation timed out after 5 minutes")
             return None
+        if history.get("status") == "error":
+            self.error.emit(
+                "Video generation failed: "
+                + (history.get("exception_message") or "unknown ComfyUI error")
+            )
+            return None
 
         # Find the output file — webp or mp4
         outputs = history.get("outputs", {})
@@ -300,6 +306,8 @@ class VideoGenManager(QObject):
         self.server_manager = server_manager
         self._runner: VideoGenRunner | None = None
         self._loaded_workflows: dict[str, dict] = {}
+        self._last_output: str | None = None
+        self._last_error: str | None = None
 
     # ── public API ────────────────────────────────────────────────────
 
@@ -338,9 +346,13 @@ class VideoGenManager(QObject):
             model_name, self.server_manager,
             width, height, length, self,
         )
+        self._last_output = None
+        self._last_error = None
         self._runner.progress_update.connect(self.progress_update.emit)
         self._runner.generation_complete.connect(self.generation_complete.emit)
+        self._runner.generation_complete.connect(lambda p: setattr(self, "_last_output", p))
         self._runner.error.connect(self.error.emit)
+        self._runner.error.connect(lambda m: setattr(self, "_last_error", m))
         self._runner.start()
 
     @Slot(result=list)
@@ -367,6 +379,58 @@ class VideoGenManager(QObject):
             shutil.copy2(src, dest)
         except OSError as e:
             self.error.emit(f"Failed to save video: {e}")
+    @Slot(str)
+    def generate_from_workflow(self, workflow_json: str):
+        """Run video generation from a raw ComfyUI API-format workflow JSON.
+
+        Accepts a complete workflow authored by the agent / LLM. Model, prompt,
+        and dimension placeholders are patched if present, so a partially
+        templated workflow works too. Dimensions default to 832x480x49.
+
+        Returns nothing — connect to ``generation_complete`` / ``error`` signals.
+        """
+        if self._runner and self._runner.isRunning():
+            self.error.emit("Already generating a video — wait for completion")
+            return
+
+        try:
+            workflow = json.loads(workflow_json)
+        except (json.JSONDecodeError, TypeError) as e:
+            self.error.emit(f"Invalid workflow JSON: {e}")
+            return
+        if not isinstance(workflow, dict) or not workflow:
+            self.error.emit("Workflow JSON must be a non-empty object of nodes")
+            return
+
+        selected = self._selected_model_path()
+        if not selected:
+            self.error.emit("No video model selected")
+            return
+        model_name = Path(selected).name
+
+        self._runner = VideoGenRunner(
+            "", workflow,
+            model_name, self.server_manager,
+            832, 480, 49, self,
+        )
+        self._runner.progress_update.connect(self.progress_update.emit)
+        self._runner.generation_complete.connect(self.generation_complete.emit)
+        self._runner.generation_complete.connect(lambda p: setattr(self, "_last_output", p))
+        self._runner.error.connect(self.error.emit)
+        self._runner.error.connect(lambda m: setattr(self, "_last_error", m))
+        self._runner.start()
+
+    def wait_for_generation(self, cancel_check=None) -> tuple[str | None, str | None]:
+        """Block until the current generation thread finishes.
+
+        Returns ``(output_path, error_message)`` — exactly one is non-None.
+        Intended for use from a blocking skill/tool call (the caller must be a
+        different thread than the runner itself).
+        """
+        if self._runner is None:
+            return None, "No generation has been started"
+        self._runner.wait()
+        return self._last_output, self._last_error
     @Slot(str)
     def select_model(self, path: str):
         """Persist the selected video model path."""

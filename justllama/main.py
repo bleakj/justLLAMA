@@ -71,6 +71,8 @@ def main():
     build_manager = BuildManager()
     imagegen_manager = ImageGenManager(server_manager)
     videogen_manager = VideoGenManager(server_manager)
+    from justllama.server.generation_registry import register_managers
+    register_managers(imagegen_manager, videogen_manager)
     voice_input_manager = VoiceInputManager(settings)
     mcp_manager = McpManager()
     skills_manager = SkillsManager()
