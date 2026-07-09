@@ -36,6 +36,14 @@ class ShortTermMemory(QObject):
         with QMutexLocker(self._mutex):
             self._messages.append({"role": role, "content": content})
         self.message_added.emit(role, content)
+    @Slot(dict)
+    def add_raw_message(self, message: dict):
+        """Add a raw message dictionary directly to short-term memory."""
+        with QMutexLocker(self._mutex):
+            self._messages.append(message)
+        role = message.get("role", "")
+        content = message.get("content", "") or ""
+        self.message_added.emit(role, str(content))
 
     @Slot(int, result=str)
     def get_history(self, limit: int = -1) -> str:
@@ -57,11 +65,6 @@ class ShortTermMemory(QObject):
                 messages = list(self._messages)[-limit:]
         return json.dumps(messages)
 
-    @Slot(result=list)
-    def get_history_list(self) -> list[dict]:
-        """Get history as a Python list (for direct QML access)."""
-        with QMutexLocker(self._mutex):
-            return list(self._messages)
 
     @Slot(result=int)
     def count(self) -> int:

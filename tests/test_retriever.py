@@ -174,14 +174,13 @@ class TestAddToCorpus:
         retriever.add_to_corpus(json.dumps({"text": "added", "metadata": {}}))
         assert len(retriever._bm25_corpus) == 2
 
-    def test_json_without_text_key_still_appends(self, retriever):
-        # The code catches KeyError on json.loads but only at the parse level;
-        # a valid JSON object without "text" still gets appended
+    def test_missing_text_key_is_rejected(self, retriever):
+        # A valid JSON object without a "text" string must be rejected so the
+        # BM25 index (which reads chunk["text"]) never crashes.
         chunk = json.dumps({"content": "wrong key"})
         result = retriever.add_to_corpus(chunk)
-        # json.loads succeeds, chunk gets appended (KeyError not raised here)
-        assert result is True
-        assert len(retriever._bm25_corpus) == 1
+        assert result is False
+        assert len(retriever._bm25_corpus) == 0
 
 
 # ---------------------------------------------------------------------------

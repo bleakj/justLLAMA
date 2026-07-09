@@ -105,6 +105,7 @@ class ModelDownloader(QObject):
         self._thread = _DownloadThread(repo_id, filename, self._dir, self)
         self._thread.finished.connect(self._on_finished)
         self._thread.error.connect(self._on_error)
+        self._thread.progress.connect(self.download_progress)
         self._thread.start()
 
         self.download_started.emit(target)

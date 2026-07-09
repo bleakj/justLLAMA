@@ -6,8 +6,10 @@ from pathlib import Path
 
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQuickControls2 import QQuickStyle
 
 from justllama.config.settings import AppSettings
+from justllama.config.env import load_env
 from justllama.server.manager import ServerManager
 from justllama.server.council import CouncilManager
 from justllama.server.updater import Updater
@@ -20,10 +22,17 @@ from justllama.memory.short_term import ShortTermMemory
 from justllama.memory.long_term import LongTermMemory
 from justllama.memory.manager import MemoryManager
 from justllama.server.build import BuildManager
+from justllama.server.imagegen import ImageGenManager
+from justllama.server.videogen import VideoGenManager
+from justllama.voice.manager import VoiceInputManager
+from justllama.server.external_models import ExternalModelsManager
+from justllama.server.mcp import McpManager
+from justllama.server.chat_manager import ChatManager
 
 
 def main():
     app = QGuiApplication(sys.argv)
+    QQuickStyle.setStyle("org.kde.desktop")
     app.setOrganizationName("justllama")
     app.setApplicationName("justllama")
     # Expose qml_dir to Qt's QML discovery — append to any existing entries
@@ -37,6 +46,8 @@ def main():
     qml_file = Path(__file__).parent / "ui" / "qml" / "Main.qml"
 
     # Initialize all components
+    # Load secrets from .env into os.environ before any key reads occur.
+    load_env()
     settings = AppSettings()
     server_manager = ServerManager()
     model_browser = ModelBrowser(settings.models_directory)
@@ -57,13 +68,23 @@ def main():
     council_manager = CouncilManager(settings, server_manager)
     model_profiles = ModelProfiles()
     build_manager = BuildManager()
+    imagegen_manager = ImageGenManager(server_manager)
+    videogen_manager = VideoGenManager(server_manager)
+    voice_input_manager = VoiceInputManager(settings)
+    mcp_manager = McpManager()
+    chat_manager = ChatManager(mcp_manager)
 
+    external_models = ExternalModelsManager(settings)
     # Ensure server is killed and resources released on app close.
     # Always run ``stop()`` (now a no-op-cleanup if the process is already
     # gone) so log-reader threads don't outlive the process.
     def _shutdown():
         server_manager.stop()
         long_term.close()
+        voice_input_manager.unload_model()
+        mcp_manager.shutdown()
+        # ImageGenManager has no long-lived subprocess at shutdown time;
+        # if a generation thread is still running it will be GC-collected.
     app.aboutToQuit.connect(_shutdown)
 
 
@@ -83,6 +104,12 @@ def main():
     ctx.setContextProperty("councilManager", council_manager)
     ctx.setContextProperty("modelProfiles", model_profiles)
     ctx.setContextProperty("buildManager", build_manager)
+    ctx.setContextProperty("imageGenManager", imagegen_manager)
+    ctx.setContextProperty("videoGenManager", videogen_manager)
+    ctx.setContextProperty("voiceInputManager", voice_input_manager)
+    ctx.setContextProperty("mcpManager", mcp_manager)
+    ctx.setContextProperty("chatManager", chat_manager)
+    ctx.setContextProperty("externalModels", external_models)
     if qml_file.exists():
         engine.load(qml_file.as_uri())
     else:

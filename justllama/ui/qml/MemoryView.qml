@@ -40,7 +40,10 @@ Kirigami.Page {
             }
             Switch {
                 checked: memoryManager.is_enabled()
-                onCheckedChanged: memoryManager.set_enabled(checked)
+                onCheckedChanged: {
+                    memoryManager.set_enabled(checked)
+                    appSettings.set_bool("memory/enabled", checked)
+                }
                 indicator: Rectangle {
                     implicitWidth: 48
                     implicitHeight: 26

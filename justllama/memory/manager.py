@@ -52,6 +52,10 @@ class MemoryManager(QObject):
     def add_message(self, role: str, content: str):
         """Add a message to short-term memory (QML-friendly alias)."""
         self._short_term.add_message(role, content)
+    @Slot(dict)
+    def add_raw_message(self, message: dict):
+        """Add a raw message dictionary directly to short-term memory."""
+        self._short_term.add_raw_message(message)
     @Slot(int, result=str)
     def get_short_term_history(self, limit: int = -1) -> str:
         """Get short-term history as JSON (QML-friendly)."""

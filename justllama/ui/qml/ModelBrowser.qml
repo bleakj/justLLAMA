@@ -56,6 +56,7 @@ Kirigami.Page {
         // Model list
         ListView {
             id: modelList
+            objectName: "modelList"
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
@@ -70,16 +71,37 @@ Kirigami.Page {
                         Layout.fillWidth: true
 
                         Label {
+                            Layout.fillWidth: true
                             text: modelData.name
                             font.bold: true
+                            elide: Text.ElideRight
                         }
-                        Label {
-                            text: modelData.size_display + " • " + new Date(modelData.modified_time * 1000).toLocaleDateString()
-                            color: Kirigami.Theme.disabledTextColor
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+
+                            Label {
+                                text: modelData.size_display + " • " + new Date(modelData.modified_time * 1000).toLocaleDateString()
+                                color: Kirigami.Theme.disabledTextColor
+                            }
+
+                            Label {
+                                property bool fitsInVRAM: modelData.size_gb <= modelBrowser.safe_vram_gb
+                                property bool fitsInTotalSafe: modelData.size_gb <= (modelBrowser.safe_vram_gb + modelBrowser.safe_ram_gb)
+
+                                visible: !fitsInVRAM
+                                Layout.fillWidth: true
+                                wrapMode: Text.Wrap
+                                text: !fitsInTotalSafe ? "⚠️ Exceeds safe memory (OOM crash risk)" : "⚠️ Exceeds VRAM (will spill to system RAM)"
+                                color: !fitsInTotalSafe ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.neutralTextColor
+                                font.italic: true
+                            }
                         }
                     }
 
                     Button {
+                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                        Layout.preferredWidth: 100
                         text: "▶️ Load"
                         onClicked: loadModel(modelData.path)
                         enabled: modelData.path !== selectedModel

@@ -114,7 +114,8 @@ class TestAddDocuments:
 
         mock_col.add.assert_called_once()
         call_kwargs = mock_col.add.call_args[1]
-        assert call_kwargs["ids"] == ["chunk_0"]
+        assert len(call_kwargs["ids"]) == 1
+        assert call_kwargs["ids"][0].startswith("chunk_")
         assert call_kwargs["documents"] == ["Alpha"]
         assert call_kwargs["metadatas"] == [{"src": "a"}]
 
@@ -163,10 +164,11 @@ class TestAddDocuments:
         call_kwargs = mock_col.add.call_args[1]
         assert call_kwargs["metadatas"] == [{"tags": "['a', 'b']"}]
 
-    def test_chunk_ids_are_sequential(self, store, mock_chromadb):
-        """Chunk IDs start from the current collection count."""
+    def test_chunk_ids_are_unique(self, store, mock_chromadb):
+        """Chunk IDs are UUID-based and unique even after remove_document."""
         _, _, mock_col = mock_chromadb
-        mock_col.count.return_value = 5  # pretend 5 already exist
+        # Pretend 5 already exist; IDs must still be unique, not derived from count.
+        mock_col.count.return_value = 5
 
         chunks = json.dumps([
             {"text": "A"},
@@ -174,7 +176,12 @@ class TestAddDocuments:
         ])
         store.add_documents(chunks)
         call_kwargs = mock_col.add.call_args[1]
-        assert call_kwargs["ids"] == ["chunk_5", "chunk_6"]
+        ids = call_kwargs["ids"]
+        assert len(ids) == 2
+        assert all(i.startswith("chunk_") for i in ids)
+        assert len(set(ids)) == 2
+        # IDs must not depend on the pre-existing count snapshot.
+        assert ids != ["chunk_5", "chunk_6"]
 
 
 # ===================================================================
@@ -309,29 +316,3 @@ class TestClear:
         store.status_changed.connect(signals.append)
         store.clear()
         assert "Vector store cleared" in signals
-
-
-# ===================================================================
-# list_collections tests
-# ===================================================================
-
-class TestListCollections:
-    def test_returns_collection_names(self, store, mock_chromadb):
-        """list_collections() returns name strings from client."""
-        _, mock_client, _ = mock_chromadb
-        c1 = MagicMock()
-        c1.name = "justllama"
-        c2 = MagicMock()
-        c2.name = "archive"
-        mock_client.list_collections.return_value = [c1, c2]
-
-        result = store.list_collections()
-        assert result == ["justllama", "archive"]
-
-    def test_empty_list(self, store, mock_chromadb):
-        """list_collections() returns [] when no collections exist."""
-        _, mock_client, _ = mock_chromadb
-        mock_client.list_collections.return_value = []
-
-        result = store.list_collections()
-        assert result == []

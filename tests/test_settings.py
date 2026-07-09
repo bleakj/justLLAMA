@@ -89,6 +89,18 @@ class TestTypedAccessors:
 
     def test_get_bool_missing_key_returns_false(self, settings):
         assert settings.get_bool("nonexistent/key") is False
+    def test_get_list_returns_list(self, settings):
+        settings.set_list("test/list", ["a", "b", "c"])
+        assert settings.get_list("test/list") == ["a", "b", "c"]
+
+    def test_get_list_missing_key_returns_empty(self, settings):
+        assert settings.get_list("nonexistent/key") == []
+
+    def test_get_list_handles_non_list(self, settings):
+        settings.set_string("test/not_list_str", "hello")
+        assert settings.get_list("test/not_list_str") == ["hello"]
+        settings.set_string("test/not_list_empty", "")
+        assert settings.get_list("test/not_list_empty") == []
 
     def test_set_string_emits_signal(self, settings):
         received = []
@@ -151,6 +163,9 @@ class TestProperties:
         assert settings.memory_enabled is True
         settings.set_bool("memory/enabled", False)
         assert settings.memory_enabled is False
+    def test_mcp_servers_returns_list(self, settings):
+        settings.set_list("mcp/servers", ["server1", "server2"])
+        assert settings.mcp_servers == ["server1", "server2"]
 
 
 # ---------------------------------------------------------------------------
@@ -255,6 +270,13 @@ class TestDefaults:
 
     def test_default_chat_mode(self, fresh_settings):
         assert fresh_settings.get_string("chat/mode") == "chat"
+    def test_default_mcp_servers(self, fresh_settings):
+        assert fresh_settings.get_list("mcp/servers") == []
+    def test_default_cloud_api_settings(self, fresh_settings):
+        assert fresh_settings.get_string("api_keys/nvidia") == ""
+        assert fresh_settings.get_string("api_keys/openrouter") == ""
+        assert fresh_settings.get_string("api_keys/opencode") == ""
+        assert fresh_settings.get_string("cloud_endpoints/opencode") == "https://api.opencode.com"
 
     def test_default_council_models(self, fresh_settings):
         assert fresh_settings.get_string("council/model_1") == ""

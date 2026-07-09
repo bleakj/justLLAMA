@@ -12,7 +12,7 @@ Built with **PySide6** + **Kirigami** (Qt6/QML) on **Fedora KDE Plasma**.
 
 ## What it does
 
-justLLAMA is a local AI workbench. It manages a `llama-server` process, lets you chat with it through a clean GUI, and provides tools for document retrieval (RAG) and persistent memory. Everything runs on your own hardware — no cloud APIs, no data leaving your machine.
+justLLAMA is a local AI workbench. It manages a `llama-server` process, lets you chat with it through a clean GUI, and provides tools for document retrieval (RAG) and persistent memory. Everything runs on your own hardware by default — no data leaves your machine. Council Mode can optionally query cloud providers (NVIDIA, OpenRouter, Opencode) when you configure their API keys in a `.env` file.
 
 ### Features
 
@@ -20,7 +20,7 @@ justLLAMA is a local AI workbench. It manages a `llama-server` process, lets you
 - **4 Chat Modes** — Switch between Chat, Plan, Build, and Council modes. Each mode has distinct color accents (blue, amber, green, purple) visible on the sidebar header, border, and streaming area. The mode persists across sessions.
   - **Plan Mode** — Model performs read-only analysis and outputs structured markdown plans
   - **Build Mode** — Model can create, edit, and read local files via structured build operations; operations queue in a pending panel for review and one-click approval
-  - **Council Mode** — Sequentially queries three independently configured models and synthesizes their responses into a single answer
+  - **Council Mode** — Sequentially queries three independently configured models and synthesizes their responses into a single answer. Any council slot may be a local GGUF model or a cloud model via the `provider:model` prefix (`nvidia:`, `openrouter:`, `opencode:`); cloud models read their API key from `.env`
 - **Model Browser** — Scan local directories for GGUF files, view model info, download from HuggingFace Hub
 - **Model Profiles** — Save and load per-model configuration presets
 - **RAG (Retrieval-Augmented Generation)** — Ingest PDFs, DOCX, TXT, and Markdown files; chunk and embed them into a ChromaDB vector store with hybrid search (vector + BM25); relevant context automatically injected during chat
@@ -126,17 +126,30 @@ response = client.chat.completions.create(
 
 ## Configuration
 
-justLLAMA stores settings via Qt's `QSettings` (typically `~/.config/justllama/justllama.conf`). Key settings:
+### Secrets (`.env`)
+
+Cloud API keys (NVIDIA, OpenRouter, Opencode) are **never** stored in application config. They live in a `.env` file at the project root (gitignored). Copy `.env.example` to `.env` and fill in your keys:
+
+```bash
+cp .env.example .env
+# then edit .env: NVIDIA_API_KEY=..., OPENROUTER_API_KEY=..., OPENCODE_API_KEY=...
+```
+
+On startup justLLAMA loads `.env` into the environment via `python-dotenv`; the values are read by Council Mode when a council slot uses a `provider:model` prefix. Existing real environment variables take precedence over `.env` (standard dotenv behavior).
+
+### QSettings
+
+All other settings are stored via Qt's `QSettings` (typically `~/.config/justllama/justllama.conf`). Key settings:
 
 ### Server
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `server/binary` | `llama-server` | Path to llama-server binary |
+| `server/binary` | `~/.local/bin/llama-server-cuda` | Path to llama-server binary |
 | `server/port` | `8080` | Server listen port |
-| `server/ctx_size` | `32768` | Context window size |
+| `server/ctx_size` | `4096` | Context window size |
 | `server/n_gpu_layers` | `99` | GPU layers to offload (-1 = auto) |
-| `server/threads` | `0` | CPU threads (0 = auto) |
+| `server/threads` | `-1` | CPU threads (-1 = auto) |
 | `server/model_path` | — | Active model file path |
 
 ### Models
@@ -151,7 +164,7 @@ justLLAMA stores settings via Qt's `QSettings` (typically `~/.config/justllama/j
 |---------|---------|-------------|
 | `rag/enabled` | `false` | Enable RAG pipeline |
 | `rag/chunk_size` | `512` | Document chunk size |
-| `rag/chunk_overlap` | `64` | Chunk overlap |
+| `rag/chunk_overlap` | `50` | Chunk overlap |
 | `rag/vectorstore_path` | — | Vector store directory |
 
 ### Memory
@@ -185,7 +198,8 @@ justllama/
 ├── main.py                 # Entry point: QGuiApplication + QML engine
 ├── __main__.py             # `python -m justllama` support
 ├── config/
-│   └── settings.py         # QSettings wrapper
+│   ├── settings.py         # QSettings wrapper
+│   └── env.py              # .env-backed secret API key loader (python-dotenv)
 ├── server/
 │   ├── manager.py          # llama-server process lifecycle
 │   ├── client.py           # REST API client
@@ -225,7 +239,7 @@ justllama/
 # Install dev dependencies
 pip install -e ".[rag,dev]"
 
-# Run tests (288 tests)
+# Run tests (325 tests)
 python3 -m pytest tests/ -v
 
 # Quick check

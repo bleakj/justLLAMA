@@ -255,7 +255,7 @@ Kirigami.Page {
             }
 
             Label {
-                text: "GET  /v1/models          List loaded models\nGET  /health             Server health status\nGET  /props              Server properties\nPOST /v1/chat/completions  Chat completion (streaming supported)\nPOST /v1/completions     Text completion\nPOST /v1/embeddings      Generate embeddings"
+                text: "GET  /v1/models          List loaded models\nGET  /health             Server health status\nGET  /props              Server properties\nGET  /slots              Slot context usage (n_past/n_ctx per slot)\nPOST /v1/chat/completions  Chat completion (streaming supported)\nPOST /v1/completions     Text completion\nPOST /v1/embeddings      Generate embeddings"
                 font.pointSize: 11
                 font.family: "monospace"
                 color: safeTextColor
@@ -289,6 +289,94 @@ Kirigami.Page {
                 }
             }
 
+
+            Rectangle { Layout.fillWidth: true; height: 1; color: safeBorderColor }
+
+            Label {
+                text: "Image & Video Generation API (ComfyUI)"
+                font.bold: true
+                font.pointSize: 14
+                color: safeHighlightColor
+            }
+
+            Label {
+                text: "justLLAMA launches a ComfyUI subprocess for image and video generation.\nConnect directly for advanced workflows and custom pipelines."
+                font.pointSize: 11
+                color: safeDisabledColor
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
+
+            // ComfyUI Base URL
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: comfyUrlRow.implicitHeight + Kirigami.Units.largeSpacing * 2
+                color: safeAltBgColor
+                radius: Kirigami.Units.cornerRadius
+                border.color: safeBorderColor
+                border.width: 1
+
+                RowLayout {
+                    id: comfyUrlRow
+                    anchors.fill: parent
+                    anchors.margins: Kirigami.Units.largeSpacing
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+
+                        Label {
+                            text: "ComfyUI Base URL"
+                            font.bold: true
+                            font.pointSize: 11
+                        }
+                        Label {
+                            text: "http://localhost:8188"
+                            font.pointSize: 12
+                            font.family: "monospace"
+                            color: safeTextColor
+                            Layout.fillWidth: true
+                        }
+                    }
+
+                    Button {
+                        text: "Copy"
+                        icon.name: "edit-copy"
+                        onClicked: apiPage.copyToClipboard("http://localhost:8188")
+                    }
+                }
+            }
+
+            Rectangle { Layout.fillWidth: true; height: 1; color: safeBorderColor }
+
+            // ComfyUI Available Endpoints
+            Label {
+                text: "ComfyUI Endpoints"
+                font.bold: true
+                font.pointSize: 14
+            }
+
+            Label {
+                text: "GET  /health             ComfyUI health check\nPOST /prompt             Submit workflow for image/video generation\nGET  /history/{id}       Check execution result by prompt ID"
+                font.pointSize: 11
+                font.family: "monospace"
+                color: safeTextColor
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
+
+            // curl example
+            ConfigSnippet {
+                title: "curl (Image Generation via ComfyUI)"
+                snippet: "# Create a workflow JSON (see flux_workflow.json in justllama source)\n" +
+                         "# Replace PROMPT_PLACEHOLDER with your prompt, then:\n" +
+                         "WORKFLOW=$(sed 's/PROMPT_PLACEHOLDER/A beautiful landscape/' /path/to/flux_workflow.json)\n\n" +
+                         "# Submit to ComfyUI\n" +
+                         'curl -X POST http://localhost:8188/prompt \\\n' +
+                         "  -H \"Content-Type: application/json\" \\\n" +
+                         '  -d "$(echo "{\\"prompt\\": $WORKFLOW, \\"client_id\\": \\"justllama\\"}")"'
+                onCopy: apiPage.copyToClipboard(snippet)
+            }
             Item { Layout.fillHeight: true }
         }
     }

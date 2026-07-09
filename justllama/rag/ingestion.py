@@ -141,15 +141,7 @@ def chunk_text(
             first_space = overlap.find(' ')
             if 0 < first_space < len(overlap) - 1:
                 overlap = overlap[first_space + 1:]
-            merged = overlap + chunks[i].text
-            # Trim to word boundary if merged exceeds chunk_size
-            if len(merged) > chunk_size:
-                trimmed = merged[:chunk_size]
-                last_space = trimmed.rfind(' ')
-                if last_space > 0:
-                    merged = trimmed[:last_space]
-                else:
-                    merged = trimmed
+            merged = overlap + " " + chunks[i].text
             chunks[i] = Chunk(
                 text=merged,
                 metadata={**chunks[i].metadata, "chunk_index": i}

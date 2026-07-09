@@ -1,0 +1,38 @@
+# justLLAMA — Python dependencies
+#
+# Install with:
+#   pip install -r requirements.txt
+#
+# For optional RAG support:
+#   pip install -r requirements.txt[rag]
+#
+# For development:
+#   pip install -r requirements.txt[dev]
+#
+# System prerequisites (not pip-installable):
+#   - llama.cpp built locally (see docs/llama-cpp-setup.md)
+#   - ComfyUI with comfy-cli (pip install comfy-cli)
+#   - ComfyUI-GGUF custom node (comfy node install comfyui-gguf)
+#   - Video GGUF models symlinked to ComfyUI/models/diffusion_models/
+#   - Video VAE files in ComfyUI/models/vae/
+
+# ── Core ──────────────────────────────────────────────────────────────
+PySide6>=6.5
+requests>=2.31
+huggingface_hub>=1.17
+mcp>=1.0.0
+python-dotenv>=1.0  # secret .env loading
+
+# ── Optional: RAG ─────────────────────────────────────────────────────
+# chromadb>=0.4
+# sentence-transformers>=2.2
+# pymupdf>=1.23
+# python-docx>=1.0
+# rank_bm25>=0.2
+
+# ── Optional: Voice ───────────────────────────────────────────────────
+# pywhispercpp>=1.5.0
+
+# ── Development ───────────────────────────────────────────────────────
+# pytest>=7.0
+# pytest-mock>=3.10

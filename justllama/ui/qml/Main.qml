@@ -46,9 +46,19 @@ Kirigami.ApplicationWindow {
                 onTriggered: mainStack.currentIndex = 4
             },
             Kirigami.Action {
+                text: "Images"
+                icon.name: "image-x-generic"
+                onTriggered: mainStack.currentIndex = 5
+            },
+            Kirigami.Action {
+                text: "Videos"
+                icon.name: "video-display"
+                onTriggered: mainStack.currentIndex = 6
+            },
+            Kirigami.Action {
                 text: "API"
                 icon.name: "network-server"
-                onTriggered: mainStack.currentIndex = 5
+                onTriggered: mainStack.currentIndex = 7
             }
         ]
     }
@@ -56,14 +66,13 @@ Kirigami.ApplicationWindow {
     contextDrawer: Kirigami.ContextDrawer {
         id: contextDrawer
     }
-
     // Top navigation toolbar
     header: ToolBar {
         RowLayout {
             anchors.fill: parent
 
             Repeater {
-                model: ["Chat", "Models", "RAG", "Memory", "Settings", "API"]
+                model: ["Chat", "Models", "RAG", "Memory", "Settings", "Images", "Videos", "API"]
                 ToolButton {
                     required property string modelData
                     required property int index
@@ -75,18 +84,20 @@ Kirigami.ApplicationWindow {
             }
         }
     }
-
     // Single navigation container — only one child visible at a time
     StackLayout {
         id: mainStack
+        objectName: "mainStack"
         anchors.fill: parent
         currentIndex: 0
 
         ChatView { objectName: "chatView" }
-        ModelBrowser {}
+        ModelBrowser { objectName: "modelBrowser" }
         RAGView {}
         MemoryView {}
         SettingsView {}
+        ImageGenView {}
+        VideoGenView {}
         APIView {}
     }
 

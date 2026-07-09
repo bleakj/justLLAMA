@@ -159,6 +159,8 @@ class Retriever(QObject):
         """
         try:
             chunk = json.loads(chunk_json)
+            if not isinstance(chunk, dict) or not isinstance(chunk.get("text"), str):
+                return False
             self._bm25_corpus.append(chunk)
             self._bm25_index = None  # invalidate cache
             return True

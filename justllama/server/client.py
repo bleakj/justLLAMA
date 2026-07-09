@@ -6,9 +6,20 @@ import requests
 class LlamaClient:
     """Communicates with a running llama-server via its HTTP API."""
 
-    def __init__(self, host: str = "http://localhost", port: int = 8080):
-        self._base = f"{host}:{port}"
+    def __init__(
+        self,
+        host: str = "http://localhost",
+        port: int | None = 8080,
+        api_key: str | None = None,
+        base_url: str | None = None,
+    ):
+        if base_url:
+            self._base = base_url.rstrip("/")
+        else:
+            self._base = f"{host}:{port}" if port is not None else host
         self._session = requests.Session()
+        if api_key:
+            self._session.headers.update({"Authorization": f"Bearer {api_key}"})
 
     def _url(self, path: str) -> str:
         return f"{self._base}{path}"
@@ -39,6 +50,8 @@ class LlamaClient:
         temperature: float = 0.7,
         max_tokens: int = 2048,
         stream: bool = False,
+        tools: list[dict] = None,
+        tool_choice: str | dict = None,
         timeout: float = 120,
         **kwargs,
     ) -> dict:
@@ -60,6 +73,10 @@ class LlamaClient:
             "stream": stream,
             **kwargs,
         }
+        if tools is not None:
+            payload["tools"] = tools
+        if tool_choice is not None:
+            payload["tool_choice"] = tool_choice
         resp = self._session.post(
             self._url("/v1/chat/completions"),
             json=payload,

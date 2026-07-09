@@ -49,6 +49,11 @@ class AppSettings(QObject):
             "council/model_1": "",
             "council/model_2": "",
             "council/model_3": "",
+            "chat/voice_input_enabled": False,
+            "chat/voice_model": "base.en",
+            "chat/voice_send_automatically": False,
+            "mcp/servers": [],
+            "cloud_endpoints/opencode": "https://api.opencode.com",
         }
         for key, default in defaults.items():
             if self._s.value(key) is None:
@@ -67,6 +72,23 @@ class AppSettings(QObject):
     @Slot(str, result=bool)
     def get_bool(self, key: str) -> bool:
         return str(self._s.value(key, "false")).lower() in ("true", "1", "yes")
+    @Slot(str, result=list)
+    def get_list(self, key: str) -> list:
+        val = self._s.value(key, [])
+        if val is None:
+            return []
+        if isinstance(val, list):
+            return [str(x) for x in val]
+        if isinstance(val, str):
+            if not val.strip():
+                return []
+            return [val]
+        return []
+
+    @Slot(str, list)
+    def set_list(self, key: str, value: list):
+        self._s.setValue(key, value)
+        self.settings_changed.emit(key, value)
 
     @Slot(str, str)
     def set_string(self, key: str, value: str):
@@ -105,6 +127,21 @@ class AppSettings(QObject):
     def memory_enabled(self) -> bool:
         return self.get_bool("memory/enabled")
 
+    @property
+    def voice_input_enabled(self) -> bool:
+        return self.get_bool("chat/voice_input_enabled")
+
+    @property
+    def voice_model(self) -> str:
+        return self.get_string("chat/voice_model")
+
+    @property
+    def voice_send_automatically(self) -> bool:
+        return self.get_bool("chat/voice_send_automatically")
+    @property
+    def mcp_servers(self) -> list[str]:
+        return self.get_list("mcp/servers")
+
     def get_all_server_config(self) -> dict:
         """Return all server-related settings as a dict."""
         return {
@@ -123,6 +160,16 @@ class AppSettings(QObject):
             "extra_args": [],
         }
 
+    @Slot(str, result=str)
+    def get_api_key(self, provider: str) -> str:
+        from justllama.config.env import get_api_key
+        return get_api_key(provider)
+
+    @Slot(str, str)
+    def set_api_key(self, provider: str, value: str):
+        from justllama.config.env import set_api_key
+        set_api_key(provider, value)
+        self.settings_changed.emit(f"api_keys/{provider}", value)
     @Slot()
     def sync(self):
         self._s.sync()

@@ -20,7 +20,8 @@ Kirigami.Page {
     property real genRepeatPenalty: 1.1
     property int genMaxTokens: 2048
     property bool showGenSettings: false
-    property var currentXhr: null
+    property int activeGenerationMode: -1  // 0=chat, 1=plan, 2=build, 3=council, 11=image, 12=video
+    property int originalMessagesCount: 0
     property string assistantName: "Assistant"
     property var pendingOperations: []
     readonly property color modeAccentColor: {
@@ -114,6 +115,114 @@ Kirigami.Page {
         }
     }
 
+    Connections {
+        target: imageGenManager
+        function onProgress_update(msg) {
+            streamingText.text = msg
+        }
+        function onGeneration_complete(path) {
+            isGenerating = false
+            streamingText.text = ""
+            var imgMsg = {"role": "image", "content": path}
+            messageHistory.push(imgMsg)
+            messageHistoryChanged()
+        }
+        function onError(msg) {
+            isGenerating = false
+            streamingText.text = "ERROR: " + msg
+            errorToast.show("Image generation error: " + msg)
+        }
+    }
+
+    Connections {
+        target: videoGenManager
+        function onProgress_update(msg) {
+            streamingText.text = msg
+        }
+        function onGeneration_complete(path) {
+            isGenerating = false
+            streamingText.text = ""
+            var videoMsg = {"role": "video", "content": path}
+            messageHistory.push(videoMsg)
+            messageHistoryChanged()
+        }
+        function onError(msg) {
+            isGenerating = false
+            streamingText.text = "ERROR: " + msg
+            errorToast.show("Video generation error: " + msg)
+        }
+    }
+
+    Connections {
+        target: voiceInputManager
+        function onTranscription_complete(text) {
+            if (text.length === 0) return
+            var sendAuto = appSettings.get_bool("chat/voice_send_automatically")
+            if (sendAuto) {
+                inputField.text = text
+                sendMessage()
+            } else {
+                if (inputField.text.length > 0) {
+                    inputField.text = inputField.text.trim() + " " + text
+                } else {
+                    inputField.text = text
+                }
+            }
+        }
+        function onError_occurred(error) {
+            errorToast.show(error)
+        }
+    }
+    Connections {
+        target: chatManager
+        ignoreUnknownSignals: true
+        function onChunk_received(chunk) {
+            if (streamingText.text === "Generating..." || streamingText.text === "Generation stopped.") {
+                streamingText.text = chunk
+            } else {
+                streamingText.text += chunk
+            }
+            chatPage.parseBuildOps(streamingText.text)
+        }
+        function onGeneration_complete(updatedHistory) {
+            isGenerating = false
+            streamingText.text = ""
+            fetchContextUsage()
+            
+            var originalCount = chatPage.originalMessagesCount || 0
+            var newMsgs = updatedHistory.slice(originalCount)
+            
+            for (var i = 0; i < newMsgs.length; i++) {
+                memoryManager.add_raw_message(newMsgs[i])
+            }
+
+            var finalContent = ""
+            for (var i = 0; i < newMsgs.length; i++) {
+                var msg = newMsgs[i]
+                if (msg.role === "assistant" && msg.content) {
+                    finalContent += msg.content
+                }
+            }
+            
+            if (finalContent.length > 0) {
+                var assistantMsg = {"role": "assistant", "content": finalContent}
+                messageHistory.push(assistantMsg)
+                messageHistoryChanged()
+            }
+        }
+        function onError_occurred(msg) {
+            isGenerating = false
+            streamingText.text = "ERROR: " + msg
+            errorToast.show("Generation error: " + msg)
+            var errorMsg = {"role": "assistant", "content": "ERROR: " + msg}
+            messageHistory.push(errorMsg)
+            messageHistoryChanged()
+        }
+        function onTool_call_detected(name, args) {
+            streamingText.text = "Running tool " + name + " with arguments: " + args + "...\n"
+        }
+    }
+
     Component.onCompleted: {
         chatPage.updateAssistantName()
     }
@@ -148,17 +257,41 @@ Kirigami.Page {
 
                         contentItem: ColumnLayout {
                             Label {
-                                text: modelData.role === "user" ? "You" : chatPage.assistantName
+                                text: modelData.role === "user" ? "You"
+                                    : modelData.role === "image" ? "Assistant (Image)"
+                                    : modelData.role === "video" ? "Assistant (Video)"
+                                    : chatPage.assistantName
                                 font.bold: true
                                 color: modelData.role === "user"
                                     ? safeHighlightColor
-                                    : safePositiveColor
+                                    : modelData.role === "image" || modelData.role === "video"
+                                        ? Kirigami.Theme.highlightColor
+                                        : safePositiveColor
+                            }
+                            // Image messages display a preview instead of text
+                            Image {
+                                visible: modelData.role === "image"
+                                source: modelData.role === "image" ? "file://" + modelData.content : ""
+                                fillMode: Image.PreserveAspectFit
+                                Layout.maximumWidth: 400
+                                Layout.maximumHeight: 400
+                                Layout.fillWidth: true
+                            }
+                            // Video messages display an animated preview
+                            AnimatedImage {
+                                visible: modelData.role === "video"
+                                source: modelData.role === "video" ? "file://" + modelData.content : ""
+                                fillMode: Image.PreserveAspectFit
+                                Layout.maximumWidth: 400
+                                Layout.maximumHeight: 300
+                                Layout.fillWidth: true
+                                playing: true
                             }
                             Label {
                                 text: modelData.content
+                                visible: modelData.role !== "image" && modelData.role !== "video"
                                 wrapMode: Text.Wrap
                                 Layout.fillWidth: true
-                                selectable: true
                             }
                             RowLayout {
                                 Layout.topMargin: Kirigami.Units.smallSpacing
@@ -375,6 +508,63 @@ Kirigami.Page {
                     enabled: !isGenerating
                     onAccepted: sendMessage()
                     Keys.onReturnPressed: sendMessage()
+                }
+
+                Button {
+                    id: micButton
+                    visible: appSettings.get_bool("chat/voice_input_enabled")
+                    enabled: !isGenerating
+
+                    icon.name: {
+                        if (voiceInputManager.recording) return "media-record"
+                        if (voiceInputManager.transcribing) return "process-working"
+                        return "audio-input-microphone"
+                    }
+
+                    ToolTip.visible: hovered
+                    ToolTip.text: {
+                        if (voiceInputManager.recording) return "Stop recording and transcribe"
+                        if (voiceInputManager.transcribing) return "Transcribing..."
+                        return "Record voice input"
+                    }
+
+                    property bool flashState: false
+                    Timer {
+                        id: flashTimer
+                        interval: 500
+                        running: voiceInputManager.recording
+                        repeat: true
+                        onTriggered: micButton.flashState = !micButton.flashState
+                    }
+
+                    background: Rectangle {
+                        implicitWidth: Kirigami.Units.gridUnit * 2
+                        implicitHeight: Kirigami.Units.gridUnit * 2
+                        color: {
+                            if (voiceInputManager.recording) {
+                                return micButton.flashState ? Qt.rgba(1, 0, 0, 0.4) : Qt.rgba(1, 0, 0, 0.1)
+                            }
+                            if (voiceInputManager.transcribing) {
+                                return Kirigami.Theme.disabledBackgroundColor
+                            }
+                            return micButton.hovered ? Kirigami.Theme.hoverColor : Kirigami.Theme.backgroundColor
+                        }
+                        border.color: {
+                            if (voiceInputManager.recording) return "red"
+                            if (voiceInputManager.transcribing) return safeBorderColor
+                            return micButton.visualFocus ? Kirigami.Theme.highlightColor : safeBorderColor
+                        }
+                        border.width: 1
+                        radius: Kirigami.Units.cornerRadius
+                    }
+
+                    onClicked: {
+                        if (voiceInputManager.recording) {
+                            voiceInputManager.stop_recording()
+                        } else if (!voiceInputManager.transcribing) {
+                            voiceInputManager.start_recording()
+                        }
+                    }
                 }
 
                 Button {
@@ -709,8 +899,26 @@ Kirigami.Page {
 
         inputField.text = ""
         isGenerating = true
+
+        // ── Image generation command ──
+        var imageMatch = text.match(/^!(?:image|imagine)\s+(.+)/i)
+        if (imageMatch) {
+            streamingText.text = "Generating image: " + imagePrompt.substring(0, 40) + (imagePrompt.length > 40 ? "..." : "")
+            chatPage.activeGenerationMode = 11
+            imageGenManager.generate(imagePrompt)
+            return
+        }
+
+        // ── Video generation command ──
+        var videoMatch = text.match(/^!(?:video|animate)\s+(.+)/i)
+        if (videoMatch) {
+            streamingText.text = "Generating video: " + videoPrompt.substring(0, 40) + (videoPrompt.length > 40 ? "..." : "")
+            chatPage.activeGenerationMode = 12
+            videoGenManager.generate(videoPrompt, 832, 480, 49)
+            return
         if (modeSelector.currentIndex === 3) {
             streamingText.text = "Initializing Council..."
+            chatPage.activeGenerationMode = 3
             councilManager.start_council(text)
             return
         }
@@ -765,113 +973,35 @@ Kirigami.Page {
         callChatCompletion(messages)
     }
 
-    function callChatCompletion(messages) {
-        var xhr = new XMLHttpRequest()
-        chatPage.currentXhr = xhr
-        var port = appSettings.get_int("server/port") || 8080
-        xhr.open("POST", "http://localhost:" + port + "/v1/chat/completions", true)
-        xhr.setRequestHeader("Content-Type", "application/json")
-        xhr.timeout = 30000
-        
-        var fullContent = ""
-        var lastIndex = 0
-        var sseLineBuffer = ""
-
-        xhr.ontimeout = function() {
-            chatPage.currentXhr = null
-            isGenerating = false
-            streamingText.text = "Error: Request timed out."
-        }
-
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState === 3 || xhr.readyState === 4) {
-                var newText = xhr.responseText.substring(lastIndex)
-                lastIndex = xhr.responseText.length
-
-                // Prepend leftover from previous chunk
-                newText = sseLineBuffer + newText
-
-                var lines = newText.split('\n')
-                // Last element may be an incomplete line — save for next chunk
-                sseLineBuffer = lines.pop() || ""
-
-                for (var i = 0; i < lines.length; i++) {
-                    var line = lines[i].trim()
-                    if (line.indexOf("data: ") === 0) {
-                        var data = line.substring(6).trim()
-                        if (data === "[DONE]") continue
-                        try {
-                            var parsed = JSON.parse(data)
-                            var delta = parsed.choices && parsed.choices[0] && parsed.choices[0].delta
-                            if (delta && delta.content) {
-                                fullContent += delta.content
-                            }
-                        } catch (e) {
-                            // Skip unparseable chunks
-                        }
-                    }
-                }
-                
-                streamingText.text = fullContent || "Generating..."
-                chatPage.parseBuildOps(fullContent)
-            }
-            
-            if (xhr.readyState === 4) {
-                chatPage.currentXhr = null
-                isGenerating = false
-                fetchContextUsage()
-                
-                if (xhr.status === 0) return  // Aborted
-                
-                if (xhr.status === 200) {
-                    if (fullContent.length > 0) {
-                        var assistantMsg = {"role": "assistant", "content": fullContent}
-                        messageHistory.push(assistantMsg)
-                        messageHistoryChanged()
-                        memoryManager.add_message("assistant", fullContent)
-                    } else {
-                        try {
-                            var response = JSON.parse(xhr.responseText)
-                            var msg = response.choices[0].message
-                            var content = msg.content || msg.reasoning_content || "No response"
-                            var fallbackMsg = {"role": "assistant", "content": content}
-                            messageHistory.push(fallbackMsg)
-                            messageHistoryChanged()
-                            memoryManager.add_message("assistant", content)
-                        } catch (e) {
-                            streamingText.text = "Error: Failed to parse response."
-                        }
-                    }
-                } else {
-                    var errorContent = "Error: Server returned " + xhr.status
-                    streamingText.text = errorContent
-                    var errorMsg = {"role": "assistant", "content": errorContent}
-                    messageHistory.push(errorMsg)
-                    messageHistoryChanged()
-                }
-            }
-        }
-        
+        chatPage.activeGenerationMode = 0
+        // Clear any leftover text (e.g. "ERROR: ...") so the first chunk replaces it cleanly.
+        streamingText.text = "Generating..."
+        chatPage.originalMessagesCount = messages.length
+        isGenerating = true
         var modelPath = appSettings.get_string("server/model_path")
         var modelName = modelPath.split('/').pop().replace('.gguf', '')
-        xhr.send(JSON.stringify({
+        var params = {
             "model": modelName,
-            "messages": messages,
             "temperature": chatPage.genTemperature,
             "top_p": chatPage.genTopP,
             "top_k": chatPage.genTopK,
             "repeat_penalty": chatPage.genRepeatPenalty,
-            "max_tokens": chatPage.genMaxTokens,
-            "stream": true
-        }))
+            "max_tokens": chatPage.genMaxTokens
+        }
+        chatManager.send_message(messages, params)
     }
-
     function stopGeneration() {
         isGenerating = false
-        if (chatPage.currentXhr) {
-            chatPage.currentXhr.abort()
-            chatPage.currentXhr = null
+        if (chatPage.activeGenerationMode === 11) {
+            imageGenManager.stop()
+        } else if (chatPage.activeGenerationMode === 12) {
+            videoGenManager.stop()
+        } else if (chatPage.activeGenerationMode === 3) {
+            councilManager.stop()
+        } else {
+            chatManager.stop_generation()
         }
+        chatPage.activeGenerationMode = -1
         streamingText.text = "Generation stopped."
     }
 

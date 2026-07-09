@@ -1,9 +1,11 @@
 """Scan local directory for GGUF model files."""
 
+import os
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QObject, Signal, Slot, Property
 
 
 @dataclass
@@ -22,12 +24,17 @@ class ModelInfo:
             size /= 1024
         return f"{size:.1f} PB"
 
+    @property
+    def size_gb(self) -> float:
+        return self.size_bytes / (1024**3)
+
     def to_dict(self) -> dict:
         return {
             "name": self.name,
             "path": self.path,
             "size_bytes": self.size_bytes,
             "size_display": self.size_display,
+            "size_gb": self.size_gb,
             "modified_time": self.modified_time,
         }
 
@@ -40,6 +47,26 @@ class ModelBrowser(QObject):
     """
 
     models_changed = Signal(list)  # list of dicts
+
+    @Property(float, constant=True)
+    def safe_ram_gb(self) -> float:
+        try:
+            total_ram = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES') / (1024**3)
+        except (AttributeError, ValueError):
+            total_ram = 0.0
+        return max(0.0, total_ram - 8.0)  # 8 GB system buffer
+
+    @Property(float, constant=True)
+    def safe_vram_gb(self) -> float:
+        try:
+            result = subprocess.run(
+                ['nvidia-smi', '--query-gpu=memory.total', '--format=csv,noheader,nounits'],
+                capture_output=True, text=True, check=True, timeout=5
+            )
+            total_vram = int(result.stdout.strip().split('\n')[0]) / 1024.0
+        except Exception:
+            total_vram = 0.0
+        return max(0.0, total_vram - 1.5)  # 1.5 GB VRAM buffer
 
     def __init__(self, models_dir: str = "", parent=None):
         super().__init__(parent)
@@ -66,11 +93,12 @@ class ModelBrowser(QObject):
         seen = set()
         for pattern in ("*.gguf", "*.gguf.part*"):
             for f in sorted(self._dir.glob(pattern)):
-                resolved = f.resolve()
-                if resolved in seen:
+                try:
+                    resolved = f.resolve()
+                    stat = f.stat()
+                except (OSError, PermissionError):
+                    # Broken symlink or unreadable file — skip safely.
                     continue
-                seen.add(resolved)
-                stat = f.stat()
                 # Skip mmproj files (multimodal projectors, not standalone models)
                 if f.name.startswith("mmproj"):
                     continue

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal, Slot
@@ -70,11 +71,8 @@ class VectorStore(QObject):
         documents = []
         metadatas = []
 
-        # Snapshot the count once so we don't pay an N+1 round trip and
-        # don't risk duplicate IDs under concurrent inserts.
-        start_index = self._collection.count()
-        for i, chunk in enumerate(chunks):
-            doc_id = f"chunk_{start_index + i}"
+        for chunk in chunks:
+            doc_id = f"chunk_{uuid.uuid4().hex}"
             ids.append(doc_id)
             documents.append(chunk["text"])
             # ChromaDB metadata values must be str/int/float/bool
@@ -213,8 +211,3 @@ class VectorStore(QObject):
         except Exception as e:
             self.status_changed.emit(f"Clear failed: {e}")
 
-    @Slot(result=list)
-    def list_collections(self) -> list[str]:
-        """List all collections."""
-        self._ensure_client()
-        return [c.name for c in self._client.list_collections()]

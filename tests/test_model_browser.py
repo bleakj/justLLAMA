@@ -145,10 +145,27 @@ def test_model_info_to_dict():
     info = ModelInfo(name="m", path="/m.gguf", size_bytes=512, modified_time=1000.0)
     d = info.to_dict()
 
-    expected_keys = {"name", "path", "size_bytes", "size_display", "modified_time"}
+    expected_keys = {"name", "path", "size_bytes", "size_display", "size_gb", "modified_time"}
     assert set(d.keys()) == expected_keys
     assert d["name"] == "m"
     assert d["path"] == "/m.gguf"
     assert d["size_bytes"] == 512
+    assert d["size_gb"] == 512 / (1024**3)
     assert d["modified_time"] == 1000.0
     assert isinstance(d["size_display"], str)
+
+
+def test_model_info_size_gb():
+    """size_gb returns the correct size in GB as a float."""
+    size_2gb = 2 * 1024 * 1024 * 1024
+    info = ModelInfo(name="m", path="/m.gguf", size_bytes=size_2gb, modified_time=0.0)
+    assert info.size_gb == 2.0
+
+
+def test_model_browser_safe_memory_limits(browser):
+    """safe_ram_gb and safe_vram_gb return non-negative floats."""
+    assert isinstance(browser.safe_ram_gb, float)
+    assert browser.safe_ram_gb >= 0.0
+    assert isinstance(browser.safe_vram_gb, float)
+    assert browser.safe_vram_gb >= 0.0
+

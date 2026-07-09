@@ -8,6 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QThread, Signal, Slot
 
 from justllama.server.client import LlamaClient
+from justllama.server.providers import provider_base_url
 
 
 class CouncilRunner(QThread):
@@ -22,6 +23,12 @@ class CouncilRunner(QThread):
         self.prompt = prompt
         self.settings = settings
         self.server_manager = server_manager
+        self._stop_requested = False
+
+    def stop(self):
+        """Request the running council run to abort (best-effort)."""
+        self._stop_requested = True
+        self.requestInterruption()
 
     def run(self):
         try:
@@ -47,11 +54,42 @@ class CouncilRunner(QThread):
 
         responses = []
         client = LlamaClient(port=port)
+        local_server_stopped = False
 
         for i, model_path in enumerate(models, start=1):
             if not model_path:
                 self.progress_update.emit(f"Council Model {i} is not configured. Skipping.")
                 responses.append(f"Model {i} not configured.")
+                continue
+
+            # Intercept cloud API models
+            if model_path.startswith(("nvidia:", "openrouter:", "opencode:")):
+                try:
+                    provider, actual_model = model_path.split(":", 1)
+                    api_key = self.settings.get_api_key(provider)
+                    if not api_key:
+                        self.progress_update.emit(f"API key for {provider} not configured. Skipping Council Model {i}.")
+                        responses.append(f"Model {i} (cloud {provider}) missing API key.")
+                        continue
+                    
+                    self.progress_update.emit(f"Querying Council Model {i}/3 ({provider}): {actual_model}...")
+                    
+                    host = provider_base_url(provider, self.settings)
+                    cloud_client = LlamaClient(host=host, port=None, api_key=api_key)
+                    resp = cloud_client.chat_completion(
+                        messages=[{"role": "user", "content": self.prompt}],
+                        model=actual_model,
+                        temperature=0.7,
+                        max_tokens=1024,
+                        stream=False
+                    )
+                    answer = resp.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    if not answer:
+                        answer = "No response content received from cloud provider."
+                    responses.append(answer)
+                except Exception as e:
+                    self.progress_update.emit(f"Error querying cloud model {model_path}: {e}. Skipping.")
+                    responses.append(f"Model {i} query error: {e}")
                 continue
 
             model_name = Path(model_path).name
@@ -60,12 +98,13 @@ class CouncilRunner(QThread):
             # Stop existing server
             if self.server_manager.is_running():
                 self.server_manager.stop()
+                local_server_stopped = True
                 time.sleep(1)  # Release TCP socket port buffer
-
             # Start server with target council model
             ok = self.server_manager.start(
                 binary, model_path, port, ctx_size, n_gpu_layers, threads
             )
+            local_server_stopped = True
             if not ok:
                 self.progress_update.emit(f"Failed to start Council Model {i}. Skipping.")
                 responses.append(f"Model {i} failed to start.")
@@ -96,7 +135,7 @@ class CouncilRunner(QThread):
                 responses.append(f"Model {i} query error: {e}")
 
         # Stop the last council model server
-        if self.server_manager.is_running():
+        if local_server_stopped and self.server_manager.is_running():
             self.server_manager.stop()
             time.sleep(1)
         # 2. Build synthesis prompt — only call the synthesis step when at
@@ -129,7 +168,7 @@ class CouncilRunner(QThread):
         )
 
         # 3. Restore the main model
-        if main_model:
+        if local_server_stopped and main_model:
             main_name = Path(main_model).name
             self.progress_update.emit(f"Restoring main model: {main_name}...")
             ok = self.server_manager.start(
@@ -137,15 +176,9 @@ class CouncilRunner(QThread):
             )
             if ok:
                 healthy = self._wait_for_health(port)
-                if not healthy:
-                    self.error.emit("Failed to restore main model to healthy state.")
-                    return
-            else:
-                self.error.emit("Failed to start main model.")
-                return
-
         self.progress_update.emit("Council queries complete. Synthesizing final response...")
-        self.synthesis_ready.emit(synthesis_prompt)
+        if not self._stop_requested:
+            self.synthesis_ready.emit(synthesis_prompt)
 
     def _wait_for_health(self, port: int) -> bool:
         health_url = f"http://127.0.0.1:{port}/health"
@@ -174,6 +207,13 @@ class CouncilManager(QObject):
         super().__init__(parent)
         self.settings = settings
         self.server_manager = server_manager
+        self._runner = None
+    @Slot()
+    def stop(self):
+        """Request the running council run to stop and wait for it."""
+        if self._runner is not None and self._runner.isRunning():
+            self._runner.stop()
+            self._runner.wait()
         self._runner = None
 
     @Slot(str)

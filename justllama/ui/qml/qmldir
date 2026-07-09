@@ -7,3 +7,5 @@ RAGView 1.0 RAGView.qml
 MemoryView 1.0 MemoryView.qml
 APIView 1.0 APIView.qml
 ConfigSnippet 1.0 ConfigSnippet.qml
+ImageGenView 1.0 ImageView.qml
+VideoGenView 1.0 VideoView.qml
