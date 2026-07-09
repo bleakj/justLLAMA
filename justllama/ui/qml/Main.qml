@@ -59,6 +59,12 @@ Kirigami.ApplicationWindow {
                 text: "API"
                 icon.name: "network-server"
                 onTriggered: mainStack.currentIndex = 7
+            },
+
+            Kirigami.Action {
+                text: "About"
+                icon.name: "help-about"
+                onTriggered: aboutDialog.open()
             }
         ]
     }
@@ -81,6 +87,12 @@ Kirigami.ApplicationWindow {
                     onClicked: mainStack.currentIndex = index
                     Layout.fillWidth: true
                 }
+            }
+
+            ToolButton {
+                text: "About"
+                icon.name: "help-about"
+                onClicked: aboutDialog.open()
             }
         }
     }
@@ -149,5 +161,36 @@ Kirigami.ApplicationWindow {
     ErrorToast {
         id: errorToast
         anchors.fill: parent
+    }
+
+    Dialog {
+        id: aboutDialog
+        modal: true
+        title: "About justLLAMA"
+        anchors.centerIn: parent
+        standardButtons: Dialog.NoButton
+
+        ColumnLayout {
+            Label {
+                text: "<b>justLLAMA</b>"
+            }
+            Label {
+                text: "Created by/maintained by Justin Balcom"
+            }
+
+            Label {
+                text: "<a href=\"https://github.com/bleakj/justLLAMA\">https://github.com/bleakj/justLLAMA</a>"
+                onLinkActivated: (link) => Qt.openUrlExternally(link)
+            }
+            Label {
+                text: "<a href=\"http://justbase.sbs\">http://justbase.sbs</a>"
+                onLinkActivated: (link) => Qt.openUrlExternally(link)
+            }
+            Button {
+                text: "Close"
+                Layout.alignment: Qt.AlignHCenter
+                onClicked: aboutDialog.close()
+            }
+        }
     }
 }

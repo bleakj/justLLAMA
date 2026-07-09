@@ -338,3 +338,149 @@ def test_model_browser_qml_warnings(qapp, tmp_path, monkeypatch):
     assert warning_label.property("fitsInTotalSafe") is False
     assert warning_label.property("visible") is True
     assert "OOM crash risk" in warning_label.property("text")
+
+
+
+def test_about_button_in_header(qapp, tmp_path, monkeypatch):
+    import os
+    import subprocess
+    from PySide6.QtQml import QQmlApplicationEngine
+    from PySide6.QtCore import QObject, QSettings
+    from justllama.models.browser import ModelBrowser
+    from justllama.models.downloader import ModelDownloader
+    from justllama.rag.vectorstore import VectorStore
+    from justllama.rag.retriever import Retriever
+    from justllama.memory.short_term import ShortTermMemory
+    from justllama.memory.long_term import LongTermMemory
+    from justllama.memory.manager import MemoryManager
+    from justllama.server.updater import Updater
+
+    def mock_sysconf(name):
+        if name == 'SC_PAGE_SIZE':
+            return 4096
+        if name == 'SC_PHYS_PAGES':
+            return 4194304
+        raise ValueError("Unknown sysconf name")
+
+    class MockCompletedProcess:
+        stdout = "10240\n"
+
+    def mock_run(*args, **kwargs):
+        return MockCompletedProcess()
+
+    monkeypatch.setattr("justllama.models.browser.os.sysconf", mock_sysconf)
+    monkeypatch.setattr("justllama.models.browser.subprocess.run", mock_run)
+
+    # Set up temporary settings
+    settings_file = str(tmp_path / "test_settings_about_button.conf")
+    temp_settings = QSettings(settings_file, QSettings.IniFormat)
+    temp_settings.setValue("memory/db_path", ":memory:")
+    temp_settings.setValue("rag/vectorstore_path", str(tmp_path / "vectordb"))
+    temp_settings.setValue("models/directory", str(tmp_path / "models"))
+    temp_settings.sync()
+
+    # Patch QSettings constructor
+    original_init = QSettings.__init__
+    def _patched_init(self, *args, **kwargs):
+        original_init(self, settings_file, QSettings.IniFormat)
+    monkeypatch.setattr(QSettings, "__init__", _patched_init)
+
+    # Initialize components
+    settings = AppSettings()
+    from justllama.server.manager import ServerManager
+    server_manager = ServerManager()
+    browser = ModelBrowser(settings.models_directory)
+    model_downloader = ModelDownloader(settings.models_directory)
+    vector_store = VectorStore(
+        settings.get_string("rag/vectorstore_path"),
+        chunk_size=settings.get_int("rag/chunk_size"),
+        chunk_overlap=settings.get_int("rag/chunk_overlap"),
+    )
+    retriever = Retriever(vector_store)
+    short_term = ShortTermMemory(max_size=settings.get_int("memory/max_short_term"))
+    long_term = LongTermMemory(db_path=":memory:")
+    memory_manager = MemoryManager(short_term, long_term, settings.memory_enabled)
+    updater = Updater()
+
+    # Set QML platform for headless run
+    monkeypatch.setenv("QT_QPA_PLATFORM", "minimal")
+
+    # Set QML import path
+    qml_dir = str(Path(__file__).parent.parent / "justllama" / "ui" / "qml")
+    monkeypatch.setenv("QML2_IMPORT_PATH", qml_dir)
+
+    engine = QQmlApplicationEngine()
+    ctx = engine.rootContext()
+
+    # Expose context properties
+    ctx.setContextProperty("appSettings", settings)
+    ctx.setContextProperty("serverManager", server_manager)
+    ctx.setContextProperty("modelBrowser", browser)
+    ctx.setContextProperty("downloader", model_downloader)
+    ctx.setContextProperty("vectorStore", vector_store)
+    ctx.setContextProperty("retriever", retriever)
+    ctx.setContextProperty("memoryManager", memory_manager)
+    ctx.setContextProperty("updater", updater)
+
+    from justllama.server.imagegen import ImageGenManager
+    imagegen_manager = ImageGenManager(server_manager)
+    ctx.setContextProperty("imageGenManager", imagegen_manager)
+
+    from justllama.server.videogen import VideoGenManager
+    videogen_manager = VideoGenManager(server_manager)
+    ctx.setContextProperty("videoGenManager", videogen_manager)
+
+    from justllama.voice.manager import VoiceInputManager
+    voice_input_manager = VoiceInputManager(settings)
+    ctx.setContextProperty("voiceInputManager", voice_input_manager)
+
+    # Load Main.qml
+    qml_file = Path(__file__).parent.parent / "justllama" / "ui" / "qml" / "Main.qml"
+    engine.load(str(qml_file.resolve()))
+
+    root_objects = engine.rootObjects()
+    assert len(root_objects) > 0, "Failed to load Main.qml"
+    root_window = root_objects[0]
+
+    # Find the "About" ToolButton
+    all_objects = root_window.findChildren(QObject)
+
+    about_button = None
+    for obj in all_objects:
+        class_name = obj.metaObject().className()
+        if "ToolButton" in class_name and obj.property("text") == "About":
+            about_button = obj
+            break
+
+    assert about_button is not None, "Failed to find 'About' ToolButton"
+
+    # Verify that icon.name equals 'help-about'
+    from PySide6.QtQml import QQmlExpression
+    expression = QQmlExpression(ctx, about_button, "icon.name")
+    res = expression.evaluate()
+    if isinstance(res, tuple) and len(res) == 2:
+        icon_name, error_occurred = res
+    else:
+        icon_name = res
+    if expression.hasError():
+        print("QQmlExpression error:", expression.error().toString())
+    assert icon_name == "help-about", f"Expected icon.name to be 'help-about', got '{icon_name}'"
+
+    # Find aboutDialog
+    about_dialog = None
+    for obj in all_objects:
+        class_name = obj.metaObject().className()
+        if "Dialog" in class_name and obj.property("title") == "About justLLAMA":
+            about_dialog = obj
+            break
+
+    assert about_dialog is not None, "Failed to find 'aboutDialog'"
+
+    # Verify it is initially not visible
+    assert not about_dialog.property("visible"), "aboutDialog should be closed initially"
+
+    # Simulate a click on the ToolButton
+    about_button.clicked.emit()
+
+    # Verify that aboutDialog is opened
+    assert about_dialog.property("visible"), "aboutDialog should be visible after clicking the button"
