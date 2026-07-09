@@ -11,3 +11,5 @@ venv/
 *.log
 .env
 *.db
+justllama.spec
+wrapper/
