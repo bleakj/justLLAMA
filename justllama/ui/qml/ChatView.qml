@@ -24,6 +24,7 @@ Kirigami.Page {
     property int originalMessagesCount: 0
     property string assistantName: "Assistant"
     property var pendingOperations: []
+    property bool showTerminal: false
     readonly property color modeAccentColor: {
         switch (modeSelector.currentIndex) {
             case 1: return Qt.rgba(0.85, 0.55, 0.2, 1)    // Plan — warm amber
@@ -255,112 +256,126 @@ Kirigami.Page {
             spacing: Kirigami.Units.smallSpacing
 
             // Message history area
-            ListView {
-                id: messageList
+            Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                clip: true
-                model: messageHistory
+                color: "#1e1e1e"
+                border.color: chatPage.modeAccentColor
+                border.width: 1
+                radius: Kirigami.Units.cornerRadius
 
-                delegate: ColumnLayout {
-                    width: messageList.width
-                    spacing: Kirigami.Units.smallSpacing
+                ListView {
+                    id: messageList
+                    anchors.fill: parent
+                    anchors.margins: Kirigami.Units.smallSpacing
+                    clip: true
+                    model: messageHistory
 
-                    Kirigami.AbstractCard {
-                        Layout.fillWidth: true
-                        Layout.margins: Kirigami.Units.smallSpacing
+                    delegate: ColumnLayout {
+                        width: messageList.width - Kirigami.Units.smallSpacing * 2
+                        spacing: 4
+                        Layout.margins: 4
 
-                        contentItem: ColumnLayout {
+                        RowLayout {
+                            Layout.fillWidth: true
                             Label {
-                                text: modelData.role === "user" ? "You"
-                                    : modelData.role === "image" ? "Assistant (Image)"
-                                    : modelData.role === "video" ? "Assistant (Video)"
-                                    : chatPage.assistantName
+                                text: modelData.role === "user" ? "user>"
+                                    : modelData.role === "image" ? "justllama(image)>"
+                                    : modelData.role === "video" ? "justllama(video)>"
+                                    : "justllama>"
+                                font.family: "monospace"
                                 font.bold: true
-                                color: modelData.role === "user"
-                                    ? safeHighlightColor
-                                    : modelData.role === "image" || modelData.role === "video"
-                                        ? Kirigami.Theme.highlightColor
-                                        : safePositiveColor
+                                color: modelData.role === "user" ? "#00ff00" : "#00aaff"
                             }
-                            // Image messages display a preview instead of text
-                            Image {
-                                visible: modelData.role === "image"
-                                source: modelData.role === "image" ? "file://" + modelData.content : ""
-                                fillMode: Image.PreserveAspectFit
-                                Layout.maximumWidth: 400
-                                Layout.maximumHeight: 400
-                                Layout.fillWidth: true
-                            }
-                            // Video messages display an animated preview
-                            AnimatedImage {
-                                visible: modelData.role === "video"
-                                source: modelData.role === "video" ? "file://" + modelData.content : ""
-                                fillMode: Image.PreserveAspectFit
-                                Layout.maximumWidth: 400
-                                Layout.maximumHeight: 300
-                                Layout.fillWidth: true
-                                playing: true
-                            }
-                            // Thinking section (collapsible, only for messages with reasoning_content)
-                            ColumnLayout {
-                                visible: modelData.reasoning_content && modelData.reasoning_content.length > 0
-                                spacing: Kirigami.Units.smallSpacing
-                                Layout.fillWidth: true
+                            Item { Layout.fillWidth: true }
+                        }
 
-                                Button {
-                                    id: reasoningToggle
-                                    text: checked ? "▾ Hide Thinking" : "▸ Show Thinking"
-                                    checkable: true
-                                    checked: false
-                                    flat: true
-                                    font.pointSize: 9
-                                    icon.name: checked ? "go-down" : "go-next"
-                                }
+                        // Image messages display a preview
+                        Image {
+                            visible: modelData.role === "image"
+                            source: modelData.role === "image" ? "file://" + modelData.content : ""
+                            fillMode: Image.PreserveAspectFit
+                            Layout.maximumWidth: 400
+                            Layout.maximumHeight: 400
+                            Layout.fillWidth: true
+                        }
 
-                                Rectangle {
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: Kirigami.Units.largeSpacing
-                                    visible: reasoningToggle.checked
-                                    color: chatPage.safeBgColor
-                                    radius: Kirigami.Units.cornerRadius
-                                    border.color: chatPage.safeBorderColor
-                                    border.width: 1
-                                    implicitHeight: reasoningLabel.implicitHeight + Kirigami.Units.smallSpacing * 2
+                        // Video messages display an animated preview
+                        AnimatedImage {
+                            visible: modelData.role === "video"
+                            source: modelData.role === "video" ? "file://" + modelData.content : ""
+                            fillMode: Image.PreserveAspectFit
+                            Layout.maximumWidth: 400
+                            Layout.maximumHeight: 300
+                            Layout.fillWidth: true
+                            playing: true
+                        }
 
-                                    Label {
-                                        id: reasoningLabel
-                                        anchors.fill: parent
-                                        anchors.margins: Kirigami.Units.smallSpacing
-                                        text: modelData.reasoning_content
-                                        wrapMode: Text.Wrap
-                                        font.italic: true
-                                        color: chatPage.safeDisabledColor
-                                    }
-                                }
+                        // Thinking section
+                        ColumnLayout {
+                            visible: !!modelData.reasoning_content && modelData.reasoning_content.length > 0
+                            spacing: Kirigami.Units.smallSpacing
+                            Layout.fillWidth: true
+
+                            Button {
+                                id: reasoningToggle
+                                text: checked ? "▾ Hide Thinking" : "▸ Show Thinking"
+                                checkable: true
+                                checked: false
+                                flat: true
+                                font.family: "monospace"
+                                font.pointSize: 9
+                                icon.name: checked ? "go-down" : "go-next"
                             }
-                            Label {
-                                text: modelData.content
-                                visible: modelData.role !== "image" && modelData.role !== "video"
-                                wrapMode: Text.Wrap
+
+                            Rectangle {
                                 Layout.fillWidth: true
-                            }
-                            RowLayout {
-                                Layout.topMargin: Kirigami.Units.smallSpacing
-                                Button {
-                                    text: "Copy"
-                                    flat: true
-                                    icon.name: "edit-copy"
-                                    font.pointSize: 9
-                                    onClicked: chatPage.copyMessage(modelData.content)
+                                Layout.leftMargin: Kirigami.Units.largeSpacing
+                                visible: reasoningToggle.checked
+                                color: "#2a2a2a"
+                                radius: Kirigami.Units.cornerRadius
+                                border.color: "#3e3e3e"
+                                border.width: 1
+                                implicitHeight: reasoningLabel.implicitHeight + Kirigami.Units.smallSpacing * 2
+
+                                Label {
+                                    id: reasoningLabel
+                                    anchors.fill: parent
+                                    anchors.margins: Kirigami.Units.smallSpacing
+                                    text: modelData.reasoning_content || ""
+                                    wrapMode: Text.Wrap
+                                    font.family: "monospace"
+                                    font.italic: true
+                                    color: "#888888"
                                 }
-                                Item { Layout.fillWidth: true }
                             }
                         }
-                    }
-                }
 
-                onCountChanged: { positionViewAtEnd() }
+                        Label {
+                            text: modelData.content
+                            visible: modelData.role !== "image" && modelData.role !== "video"
+                            wrapMode: Text.Wrap
+                            Layout.fillWidth: true
+                            font.family: "monospace"
+                            color: "#ffffff"
+                        }
+
+                        RowLayout {
+                            Layout.topMargin: Kirigami.Units.smallSpacing
+                            Button {
+                                text: "Copy"
+                                flat: true
+                                icon.name: "edit-copy"
+                                font.family: "monospace"
+                                font.pointSize: 9
+                                onClicked: chatPage.copyMessage(modelData.content)
+                            }
+                            Item { Layout.fillWidth: true }
+                        }
+                    }
+
+                    onCountChanged: { positionViewAtEnd() }
+                }
             }
 
             // RAG / Memory indicators
@@ -510,7 +525,7 @@ Kirigami.Page {
                 Layout.fillWidth: true
                 Layout.preferredHeight: streamingLayout.implicitHeight + Kirigami.Units.largeSpacing * 2
                 visible: isGenerating
-                color: safeAltBgColor
+                color: "#1e1e1e"
                 border.color: chatPage.modeAccentColor
                 border.width: 1
                 radius: Kirigami.Units.cornerRadius
@@ -521,7 +536,7 @@ Kirigami.Page {
                     anchors.margins: Kirigami.Units.largeSpacing
                     spacing: Kirigami.Units.smallSpacing
 
-                    // Thinking section (collapsible, visible once reasoning starts streaming)
+                    // Thinking section
                     ColumnLayout {
                         id: streamingReasoningLayout
                         visible: streamingReasoningText.text.length > 0
@@ -534,6 +549,7 @@ Kirigami.Page {
                             checkable: true
                             checked: true
                             flat: true
+                            font.family: "monospace"
                             font.pointSize: 9
                             icon.name: checked ? "go-down" : "go-next"
                         }
@@ -542,9 +558,9 @@ Kirigami.Page {
                             Layout.fillWidth: true
                             Layout.leftMargin: Kirigami.Units.largeSpacing
                             visible: streamingReasoningToggle.checked
-                            color: chatPage.safeBgColor
+                            color: "#2a2a2a"
                             radius: Kirigami.Units.cornerRadius
-                            border.color: chatPage.safeBorderColor
+                            border.color: "#3e3e3e"
                             border.width: 1
                             implicitHeight: streamingReasoningText.implicitHeight + Kirigami.Units.smallSpacing * 2
 
@@ -554,8 +570,9 @@ Kirigami.Page {
                                 anchors.margins: Kirigami.Units.smallSpacing
                                 text: ""
                                 wrapMode: Text.Wrap
+                                font.family: "monospace"
                                 font.italic: true
-                                color: chatPage.safeDisabledColor
+                                color: "#888888"
                             }
                         }
                     }
@@ -565,6 +582,106 @@ Kirigami.Page {
                         Layout.fillWidth: true
                         text: "Generating..."
                         wrapMode: Text.Wrap
+                        font.family: "monospace"
+                        color: "#ffffff"
+                    }
+                }
+            }
+
+            // Terminal Panel
+            Rectangle {
+                id: terminalPanel
+                visible: chatPage.showTerminal
+                Layout.fillWidth: true
+                Layout.preferredHeight: 250
+                color: "#1e1e1e"
+                border.color: chatPage.modeAccentColor
+                border.width: 1
+                radius: Kirigami.Units.cornerRadius
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: Kirigami.Units.smallSpacing
+                    spacing: 4
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Label {
+                            text: "System Terminal (PTY)"
+                            color: "#ffffff"
+                            font.bold: true
+                        }
+                        Item { Layout.fillWidth: true }
+                        Button {
+                            text: "Clear"
+                            flat: true
+                            onClicked: terminalText.text = ""
+                        }
+                    }
+
+                    ScrollView {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        clip: true
+
+                        TextArea {
+                            id: terminalText
+                            width: parent.width
+                            readOnly: true
+                            font.family: "monospace"
+                            font.pointSize: 10
+                            color: "#00ff00"
+                            background: null
+                            wrapMode: TextEdit.WrapAnywhere
+                            selectByMouse: true
+
+                            Component.onCompleted: {
+                                text = terminalManager.get_history()
+                            }
+
+                            Connections {
+                                target: terminalManager
+                                ignoreUnknownSignals: true
+                                function onData_received(data) {
+                                    terminalText.append(data)
+                                    if (terminalText.text.length > 50000) {
+                                        terminalText.text = terminalText.text.slice(-50000)
+                                    }
+                                    terminalText.cursorPosition = terminalText.text.length
+                                }
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        TextField {
+                            id: terminalInput
+                            Layout.fillWidth: true
+                            placeholderText: "Type command to send to PTY..."
+                            font.family: "monospace"
+                            onAccepted: {
+                                if (text.length > 0) {
+                                    terminalManager.send_keys(text + "\n")
+                                    text = ""
+                                }
+                            }
+                        }
+                        Button {
+                            text: "Send"
+                            onClicked: {
+                                if (terminalInput.text.length > 0) {
+                                    terminalManager.send_keys(terminalInput.text + "\n")
+                                    terminalInput.text = ""
+                                }
+                            }
+                        }
+                        Button {
+                            text: "Ctrl+C"
+                            onClicked: {
+                                terminalManager.send_keys("\x03")
+                            }
+                        }
                     }
                 }
             }
@@ -791,6 +908,17 @@ Kirigami.Page {
                     Layout.fillWidth: true
                     enabled: chatPage.contextPercent > 30
                     onClicked: compactContext()
+                }
+
+                Button {
+                    text: chatPage.showTerminal ? "💻 Hide Terminal" : "💻 Show Terminal"
+                    Layout.fillWidth: true
+                    onClicked: {
+                        chatPage.showTerminal = !chatPage.showTerminal
+                        if (chatPage.showTerminal) {
+                            terminalManager.start_session()
+                        }
+                    }
                 }
 
                         // Pending Build Operations panel (visible only in Build mode)

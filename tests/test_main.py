@@ -442,17 +442,17 @@ def test_about_button_in_header(qapp, tmp_path, monkeypatch):
     assert len(root_objects) > 0, "Failed to load Main.qml"
     root_window = root_objects[0]
 
-    # Find the "About" ToolButton
+    # Find the "About" button
     all_objects = root_window.findChildren(QObject)
 
     about_button = None
     for obj in all_objects:
         class_name = obj.metaObject().className()
-        if "ToolButton" in class_name and obj.property("text") == "About":
+        if ("Button" in class_name or "ToolButton" in class_name) and obj.property("text") == "About justLLAMA":
             about_button = obj
             break
 
-    assert about_button is not None, "Failed to find 'About' ToolButton"
+    assert about_button is not None, "Failed to find 'About' button"
 
     # Verify that icon.name equals 'help-about'
     from PySide6.QtQml import QQmlExpression
@@ -484,3 +484,85 @@ def test_about_button_in_header(qapp, tmp_path, monkeypatch):
 
     # Verify that aboutDialog is opened
     assert about_dialog.property("visible"), "aboutDialog should be visible after clicking the button"
+
+
+def test_chatview_reasoning_bindings_no_undefined_error(qapp, tmp_path, monkeypatch):
+    """Reproduce the ChatView reasoning_content bindings and assert no
+    `[undefined] to bool/string` type-assignment errors occur when the
+    delegate's modelData.reasoning_content is undefined.
+
+    Regression guard for the QML type errors fixed in ChatView.qml.
+    """
+    import sys
+    from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent, QQmlExpression
+    from PySide6.QtCore import QUrl, QObject
+    from justllama.config.settings import AppSettings
+    from justllama.main import main as _unused  # ensure imports resolve
+
+    # Set up temporary settings
+    settings_file = str(tmp_path / "test_settings_chatview.conf")
+    temp_settings = QSettings(settings_file, QSettings.IniFormat)
+    temp_settings.setValue("memory/db_path", ":memory:")
+    temp_settings.setValue("rag/vectorstore_path", str(tmp_path / "vectordb"))
+    temp_settings.setValue("models/directory", str(tmp_path / "models"))
+    temp_settings.sync()
+
+    original_init = QSettings.__init__
+    def _patched_init(self, *args, **kwargs):
+        original_init(self, settings_file, QSettings.IniFormat)
+    monkeypatch.setattr(QSettings, "__init__", _patched_init)
+
+    monkeypatch.setenv("QT_QPA_PLATFORM", "minimal")
+    qml_dir = str(Path(__file__).parent.parent / "justllama" / "ui" / "qml")
+    monkeypatch.setenv("QML2_IMPORT_PATH", qml_dir)
+
+    engine = QQmlApplicationEngine()
+    ctx = engine.rootContext()
+    ctx.setContextProperty("appSettings", AppSettings())
+
+    # Mirror the exact ColumnLayout/Text bindings from ChatView.qml delegate.
+    component = QQmlComponent(engine)
+    qml_src = b"""
+    import QtQuick
+    import QtQuick.Controls
+    import QtQuick.Layouts
+    import org.kde.kirigami as Kirigami
+    Item {
+        id: root
+        property var modelData
+        ColumnLayout {
+            visible: !!modelData.reasoning_content && modelData.reasoning_content.length > 0
+            Label {
+                objectName: "reasoningText"
+                text: modelData.reasoning_content || ""
+            }
+        }
+    }
+    """
+    component.setData(qml_src, QUrl())
+    assert component.isReady(), f"QML component failed: {component.errors()}"
+
+    warnings = []
+    def _warn(obj, msg):
+        warnings.append(msg)
+    engine.warnings.connect(_warn)
+
+    obj = component.create(ctx)
+    assert obj is not None, "Failed to instantiate QML test component"
+
+    # Set modelData WITHOUT reasoning_content (undefined) — the failing case.
+    obj.setProperty("modelData", {"role": "assistant", "content": "Hi"})
+
+    reasoning = obj.findChild(QObject, "reasoningText")
+    assert reasoning is not None
+    assert reasoning.property("text") == "", "text binding must coerce undefined to empty string"
+
+    # Now supply reasoning_content and confirm it binds through.
+    obj.setProperty("modelData", {"role": "assistant", "content": "Hi", "reasoning_content": "thinking..."})
+    assert reasoning.property("text") == "thinking..."
+
+    undefined_errors = [
+        w for w in warnings
+        if "Unable to assign [undefined]" in w.toString()
+    ]
+    assert not undefined_errors, f"Unexpected [undefined] errors: {undefined_errors}"

@@ -79,7 +79,25 @@ class ChatRunner(QThread):
                 "repeat_penalty": self.params.get("repeat_penalty", 1.1),
             }
 
-            # If there are tools, pass them. Otherwise omit to revert perfectly to standard completion
+            # Verify the running server is actually serving the requested model.
+            # This back-tests the selection: if a different model is loaded, refuse
+            # to generate so the user never gets a response from the wrong model.
+            if model != "default" and ":" not in model:
+                try:
+                    server_props = client.props(timeout=2.0)
+                    loaded_model = server_props.get("default_generation_settings", {}).get("model", "")
+                    if model not in loaded_model:
+                        self.error_occurred.emit(
+                            f"Model mismatch: requested '{model}' but server is "
+                            f"currently running '{loaded_model}'. Stopping generation "
+                            f"to avoid replying with the wrong model."
+                        )
+                        break
+                except Exception:
+                    # Server unreachable / no /props endpoint (e.g. cloud-routed).
+                    # Proceed to chat_completion, which will surface a real error.
+                    pass
+
             resp = client.chat_completion(
                 messages=self.messages,
                 model=model,

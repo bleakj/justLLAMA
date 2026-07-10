@@ -879,283 +879,7 @@ Kirigami.ScrollablePage {
             }
         }
 
-        // ── MCP Servers ──
-        Kirigami.AbstractCard {
-            Layout.fillWidth: true
 
-            contentItem: ColumnLayout {
-                id: mcpLayout
-                spacing: Kirigami.Units.smallSpacing
-
-                property var mcpServersList: []
-
-                Label {
-                    text: "MCP Servers"
-                    font.bold: true
-                    font.pointSize: 14
-                }
-
-                Label {
-                    text: "Enter the exact command to run the server, e.g., <code>npx -y @modelcontextprotocol/server-everything</code>"
-                    wrapMode: Text.Wrap
-                    Layout.fillWidth: true
-                    font.pointSize: 11
-                }
-
-                Repeater {
-                    model: mcpLayout.mcpServersList
-
-                    delegate: RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Kirigami.Units.smallSpacing
-
-                        TextField {
-                            Layout.fillWidth: true
-                            text: modelData
-                            placeholderText: "MCP server command..."
-                            onEditingFinished: {
-                                var newList = mcpLayout.mcpServersList.slice()
-                                newList[index] = text
-                                mcpLayout.mcpServersList = newList
-                                appSettings.set_list("mcp/servers", newList)
-                            }
-                        }
-
-                        Button {
-                            text: "Remove"
-                            Layout.preferredWidth: 100
-                            onClicked: {
-                                var newList = mcpLayout.mcpServersList.slice()
-                                newList.splice(index, 1)
-                                mcpLayout.mcpServersList = newList
-                                appSettings.set_list("mcp/servers", newList)
-                            }
-                        }
-                    }
-                }
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Kirigami.Units.smallSpacing
-
-                    TextField {
-                        id: newServerField
-                        Layout.fillWidth: true
-                        placeholderText: "New MCP server command..."
-                    }
-
-                    Button {
-                        text: "Add Server"
-                        Layout.preferredWidth: 120
-                        enabled: newServerField.text.trim() !== ""
-                        onClicked: {
-                            var cmd = newServerField.text.trim()
-                            if (cmd) {
-                                var newList = mcpLayout.mcpServersList.slice()
-                                newList.push(cmd)
-                                mcpLayout.mcpServersList = newList
-                                appSettings.set_list("mcp/servers", newList)
-                                newServerField.text = ""
-                            }
-                        }
-                    }
-                }
-
-                Component.onCompleted: {
-                    mcpServersList = appSettings.get_list("mcp/servers")
-                }
-            }
-        }
-
-        // ── Managed Skills ──
-        Kirigami.AbstractCard {
-            Layout.fillWidth: true
-
-            contentItem: ColumnLayout {
-                id: managedSkillsLayout
-                spacing: Kirigami.Units.smallSpacing
-
-                property var managedSkills: []
-                property var skillsCatalog: []
-
-                Label {
-                    text: "Managed Skills"
-                    font.bold: true
-                    font.pointSize: 14
-                }
-
-                Label {
-                    text: "Select curated MCP skills from the catalog below, then toggle them ON/OFF. Enabled skills will be started automatically."
-                    wrapMode: Text.Wrap
-                    Layout.fillWidth: true
-                    font.pointSize: 11
-                }
-
-                // Catalog selection row
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Kirigami.Units.smallSpacing
-
-                    ComboBox {
-                        id: skillsCatalogCombo
-                        Layout.fillWidth: true
-                        textRole: "name"
-                        model: managedSkillsLayout.skillsCatalog
-
-                        Label {
-                            anchors.centerIn: parent
-                            text: "(No skills in catalog)"
-                            visible: skillsCatalogCombo.count === 0
-                            color: Kirigami.Theme.disabledTextColor
-                        }
-                    }
-
-                    Button {
-                        text: "Add Skill"
-                        Layout.preferredWidth: 120
-                        enabled: skillsCatalogCombo.currentIndex >= 0 && skillsCatalogCombo.count > 0
-                        onClicked: {
-                            var catalog = managedSkillsLayout.skillsCatalog
-                            var idx = skillsCatalogCombo.currentIndex
-                            if (idx < 0 || idx >= catalog.length) return
-                            var selected = catalog[idx]
-
-                            // Avoid duplicates by id
-                            if (managedSkillsLayout.managedSkills.some(function(s) { return s.id === selected.id })) {
-                                errorToast.show("Skill '" + selected.name + "' is already added.")
-                                return
-                            }
-
-                            // Clone the catalog entry, add enabled:false
-                            var newSkill = {
-                                "id": selected.id,
-                                "name": selected.name,
-                                "command": selected.command,
-                                "description": selected.description,
-                                "enabled": false
-                            }
-                            var newList = managedSkillsLayout.managedSkills.slice()
-                            newList.push(newSkill)
-                            managedSkillsLayout.managedSkills = newList
-                            appSettings.set_json_string("mcp/managed_skills", JSON.stringify(newList))
-                        }
-                    }
-                }
-
-                // Active skills list
-                Label {
-                    text: "Added Skills:"
-                    font.bold: true
-                    font.pointSize: 11
-                    topPadding: Kirigami.Units.smallSpacing
-                }
-
-                Repeater {
-                    model: managedSkillsLayout.managedSkills
-
-                    delegate: RowLayout {
-                        id: skillDelegate
-                        Layout.fillWidth: true
-                        spacing: Kirigami.Units.smallSpacing
-
-                        required property var modelData
-                        required property int index
-
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            Layout.minimumWidth: 120
-                            spacing: 2
-
-                            Label {
-                                text: modelData.name || "Unknown Skill"
-                                font.bold: true
-                                elide: Text.ElideRight
-                                Layout.fillWidth: true
-                            }
-
-                            Label {
-                                text: modelData.description || ""
-                                color: Kirigami.Theme.disabledTextColor
-                                font.pointSize: 9
-                                wrapMode: Text.Wrap
-                                Layout.fillWidth: true
-                                visible: text.length > 0
-                            }
-                        }
-
-                        TextField {
-                            Layout.fillWidth: true
-                            Layout.minimumWidth: 200
-                            text: modelData.command || ""
-                            placeholderText: "MCP server command..."
-                            onEditingFinished: {
-                                var list = managedSkillsLayout.managedSkills.slice()
-                                list[index].command = text
-                                managedSkillsLayout.managedSkills = list
-                                appSettings.set_json_string("mcp/managed_skills", JSON.stringify(list))
-                            }
-                        }
-
-                        Switch {
-                            Layout.preferredWidth: 60
-                            checked: modelData.enabled === true
-                            onClicked: {
-                                var list = managedSkillsLayout.managedSkills.slice()
-                                list[index].enabled = checked
-                                managedSkillsLayout.managedSkills = list
-                                appSettings.set_json_string("mcp/managed_skills", JSON.stringify(list))
-                            }
-                        }
-
-                        Button {
-                            text: "Remove"
-                            Layout.preferredWidth: 100
-                            onClicked: {
-                                var list = managedSkillsLayout.managedSkills.slice()
-                                list.splice(index, 1)
-                                managedSkillsLayout.managedSkills = list
-                                appSettings.set_json_string("mcp/managed_skills", JSON.stringify(list))
-                            }
-                        }
-                    }
-                }
-
-                // Fallback label when no skills added
-                Label {
-                    text: "No skills added yet. Select a skill from the catalog above and click Add Skill."
-                    color: Kirigami.Theme.disabledTextColor
-                    font.pointSize: 10
-                    visible: managedSkillsLayout.managedSkills.length === 0
-                    Layout.fillWidth: true
-                    wrapMode: Text.Wrap
-                }
-
-                Component.onCompleted: {
-                    // Load saved managed skills
-                    var raw = appSettings.get_json_string("mcp/managed_skills")
-                    if (raw && raw.trim().length > 0) {
-                        try {
-                            managedSkills = JSON.parse(raw)
-                        } catch(e) {
-                            console.warn("Failed to parse managed_skills JSON:", e)
-                            managedSkills = []
-                        }
-                    }
-
-                    // Load catalog
-                    var catalogRaw = appSettings.get_skills_catalog()
-                    if (catalogRaw && catalogRaw.trim().length > 0) {
-                        try {
-                            skillsCatalog = JSON.parse(catalogRaw)
-                        } catch(e) {
-                            console.warn("Failed to parse skills catalog:", e)
-                            skillsCatalog = []
-                        }
-                    }
-                }
-            }
-        }
-        // ── end Managed Skills ──
         // ── llama.cpp Update ──
         Kirigami.AbstractCard {
             Layout.fillWidth: true
@@ -1211,102 +935,44 @@ Kirigami.ScrollablePage {
                 }
             }
         }
-        // Native Agent Skills
-        Kirigami.AbstractCard {
-            Layout.fillWidth: true
 
-            contentItem: ColumnLayout {
-                spacing: Kirigami.Units.smallSpacing
+        Button {
+            text: "About justLLAMA"
+            icon.name: "help-about"
+            Layout.alignment: Qt.AlignHCenter
+            onClicked: aboutDialog.open()
+        }
+    }
 
-                Label {
-                    text: "Native Agent Skills"
-                    font.bold: true
-                    font.pointSize: 14
-                }
+    Dialog {
+        id: aboutDialog
+        modal: true
+        title: "About justLLAMA"
+        anchors.centerIn: parent
+        standardButtons: Dialog.NoButton
 
-                Label {
-                    text: "Toggle built-in skills that extend the LLM with local Python tools."
-                    font.italic: true
-                    color: Kirigami.Theme.disabledTextColor
-                    wrapMode: Text.Wrap
-                    Layout.fillWidth: true
-                }
+        ColumnLayout {
+            Label {
+                text: "<b>justLLAMA</b>"
+            }
+            Label {
+                text: "Created by/maintained by Justin Balcom"
+            }
 
-                Repeater {
-                    id: skillsRepeater
-                    model: skillsManager.get_skills_list()
-
-                    delegate: RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Kirigami.Units.smallSpacing
-
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 2
-
-                            Label {
-                                text: modelData.name
-                                font.bold: true
-                                Layout.fillWidth: true
-                                elide: Text.ElideRight
-                            }
-                            Label {
-                                text: modelData.description
-                                font.pointSize: Kirigami.Theme.smallFont.pointSize
-                                color: Kirigami.Theme.disabledTextColor
-                                wrapMode: Text.Wrap
-                                Layout.fillWidth: true
-                            }
-                        }
-
-                        Switch {
-                            checked: modelData.enabled
-                            onToggled: skillsManager.set_enabled(modelData.id, checked)
-                        }
-
-                        ToolButton {
-                            icon.name: "document-edit"
-                            visible: modelData.is_custom === true
-                            onClicked: {
-                                customSkillSheet.editingFilename = modelData.filename
-                                customSkillSheet.filenameField = modelData.filename
-                                customSkillSheet.codeArea = skillsManager.read_user_skill(modelData.filename)
-                                customSkillSheet.open()
-                            }
-                        }
-                        ToolButton {
-                            icon.name: "edit-delete"
-                            visible: modelData.is_custom === true
-                            onClicked: {
-                                skillsManager.delete_user_skill(modelData.filename)
-                                skillsRepeater.model = skillsManager.get_skills_list()
-                            }
-                        }
-                    }
-                }
-
-                Label {
-                    visible: skillsRepeater.count === 0
-                    text: "No native skills registered."
-                    color: Kirigami.Theme.disabledTextColor
-                    font.italic: true
-                }
-
-                Button {
-                    text: "Create Custom Skill"
-                    icon.name: "list-add"
-                    Layout.fillWidth: true
-                    onClicked: {
-                        customSkillSheet.editingFilename = ""
-                        customSkillSheet.filenameField = ""
-                        customSkillSheet.codeArea = skillsManager.get_skill_template()
-                        customSkillSheet.open()
-                    }
-                }
+            Label {
+                text: "<a href=\"https://github.com/bleakj/justLLAMA\">https://github.com/bleakj/justLLAMA</a>"
+                onLinkActivated: (link) => Qt.openUrlExternally(link)
+            }
+            Label {
+                text: "<a href=\"http://justbase.sbs\">http://justbase.sbs</a>"
+                onLinkActivated: (link) => Qt.openUrlExternally(link)
+            }
+            Button {
+                text: "Close"
+                Layout.alignment: Qt.AlignHCenter
+                onClicked: aboutDialog.close()
             }
         }
-
-
     }
 
     // Custom skill editor dialog

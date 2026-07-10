@@ -1,10 +1,11 @@
+import os
 import asyncio
 import json
 
 import threading
 import shlex
 from contextlib import AsyncExitStack
-from PySide6.QtCore import QObject, Slot
+from PySide6.QtCore import QObject, Signal, Slot
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from justllama.config.settings import AppSettings
@@ -16,6 +17,9 @@ class McpManager(QObject):
     Runs an asyncio loop in a background thread to handle async stdio client connections
     and operations safely without blocking the Qt main thread.
     """
+    # Emitted when a server connection attempt resolves.
+    # Args: (command, status, message) where status is "connected" or "error".
+    server_status_changed = Signal(str, str, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -49,7 +53,7 @@ class McpManager(QObject):
         asyncio.run_coroutine_threadsafe(self._connect_servers_async(), self._loop)
 
     def _on_settings_changed(self, key: str, value):
-        if key in ("mcp/servers", "mcp/managed_skills"):
+        if key in ("mcp/servers",):
             print(f"[MCP] Config changed: {key}={value}. Reconnecting...")
             self.connect_servers()
     async def _connect_servers_async(self):
@@ -62,21 +66,73 @@ class McpManager(QObject):
 
             settings = AppSettings()
             servers = settings.mcp_servers
-            print(f"[MCP] Connecting to servers: {servers}")
-            # Merge enabled managed skills into the server list
+            server_envs = {}
+
+            # Parse servers_config (the authoritative list of server objects).
+            config_list = []
+            try:
+                config_json = settings.get_json_string("mcp/servers_config")
+                if config_json:
+                    parsed = json.loads(config_json)
+                    if isinstance(parsed, list):
+                        config_list = parsed
+            except Exception as e:
+                print(f"[MCP] Failed to parse servers_config JSON: {e}")
+
+            # One-time migration: merge legacy managed skills into servers_config.
             try:
                 managed_skills_json = settings.get_json_string("mcp/managed_skills")
                 if managed_skills_json:
                     managed_skills = json.loads(managed_skills_json)
                     if isinstance(managed_skills, list):
+                        existing_cmds = {
+                            item.get("command", "").strip()
+                            for item in config_list
+                            if isinstance(item, dict)
+                        }
+                        migrated = False
                         for skill in managed_skills:
-                            if isinstance(skill, dict) and skill.get("enabled"):
-                                cmd = skill.get("command", "").strip()
-                                if cmd:
-                                    servers.append(cmd)
-            except (json.JSONDecodeError, Exception) as e:
-                print(f"[MCP] Failed to parse managed_skills: {e}")
-            print(f"[MCP] Full server list (including enabled skills): {servers}")
+                            if not isinstance(skill, dict):
+                                continue
+                            cmd = skill.get("command", "").strip()
+                            if not cmd or cmd in existing_cmds:
+                                continue
+                            existing_cmds.add(cmd)
+                            env = skill.get("env")
+                            config_list.append({
+                                "command": cmd,
+                                "enabled": bool(skill.get("enabled", False)),
+                                "env": env if isinstance(env, dict) else {},
+                                "name": skill.get("name", ""),
+                                "description": skill.get("description", ""),
+                            })
+                            migrated = True
+                        if migrated:
+                            settings.set_json_string("mcp/servers_config", json.dumps(config_list))
+                            enabled_cmds = [
+                                item.get("command")
+                                for item in config_list
+                                if isinstance(item, dict)
+                                and item.get("enabled")
+                                and item.get("command", "").strip()
+                            ]
+                            settings.set_list("mcp/servers", enabled_cmds)
+                            servers = enabled_cmds
+                    # Clear legacy setting so the migration runs only once.
+                    settings.set_json_string("mcp/managed_skills", "")
+            except Exception as e:
+                print(f"[MCP] Failed to migrate managed_skills: {e}")
+
+            # Collect environment variables from the (possibly migrated) config.
+            for item in config_list:
+                if isinstance(item, dict):
+                    cmd = item.get("command", "").strip()
+                    env = item.get("env")
+                    if cmd and isinstance(env, dict):
+                        server_envs[cmd] = env
+            if servers:
+                print(f"[MCP] Connecting to servers: {servers}")
+                print(f"[MCP] Full server list (including enabled skills): {servers}")
             for server_str in servers:
                 if not server_str.strip():
                     continue
@@ -86,24 +142,33 @@ class McpManager(QObject):
                         continue
                     cmd = parts[0]
                     args = parts[1:]
-                    
+
+                    # Merge os.environ with custom environment variables
+                    env_params = os.environ.copy()
+                    custom_env = server_envs.get(server_str)
+                    if custom_env:
+                        for k, v in custom_env.items():
+                            env_params[str(k)] = str(v)
+
                     server_params = StdioServerParameters(
                         command=cmd,
                         args=args,
-                        env=None
+                        env=env_params
                     )
-                    
+
                     stack = AsyncExitStack()
                     transport = await stack.enter_async_context(stdio_client(server_params))
                     read, write = transport
-                    
+
                     session = await stack.enter_async_context(ClientSession(read, write))
                     await session.initialize()
-                    
+
                     self._sessions[server_str] = (session, stack)
                     print(f"[MCP] Successfully connected to server: {server_str}")
+                    self.server_status_changed.emit(server_str, "connected", "")
                 except Exception as e:
                     print(f"[MCP] Failed to connect to server '{server_str}': {e}")
+                    self.server_status_changed.emit(server_str, "error", str(e))
             
             await self._rebuild_tool_mappings_async()
 

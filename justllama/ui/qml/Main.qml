@@ -67,9 +67,9 @@ Kirigami.ApplicationWindow {
             },
 
             Kirigami.Action {
-                text: "About"
-                icon.name: "help-about"
-                onTriggered: aboutDialog.open()
+                text: "Skills / MCP"
+                icon.name: "configure-plugins"
+                onTriggered: mainStack.currentIndex = 9
             }
         ]
     }
@@ -83,7 +83,7 @@ Kirigami.ApplicationWindow {
             anchors.fill: parent
 
             Repeater {
-                model: ["Chat", "Models", "Cloud Models", "RAG", "Memory", "Settings", "Images", "Videos", "API"]
+                model: ["Chat", "Models", "Cloud Models", "RAG", "Memory", "Settings", "Images", "Videos", "API", "Skills / MCP"]
                 ToolButton {
                     required property string modelData
                     required property int index
@@ -92,12 +92,6 @@ Kirigami.ApplicationWindow {
                     onClicked: mainStack.currentIndex = index
                     Layout.fillWidth: true
                 }
-            }
-
-            ToolButton {
-                text: "About"
-                icon.name: "help-about"
-                onClicked: aboutDialog.open()
             }
         }
     }
@@ -117,6 +111,7 @@ Kirigami.ApplicationWindow {
         ImageGenView {}
         VideoGenView {}
         APIView {}
+        SkillsView { objectName: "skillsView" }
     }
 
     // Server status tracking
@@ -169,34 +164,4 @@ Kirigami.ApplicationWindow {
         anchors.fill: parent
     }
 
-    Dialog {
-        id: aboutDialog
-        modal: true
-        title: "About justLLAMA"
-        anchors.centerIn: parent
-        standardButtons: Dialog.NoButton
-
-        ColumnLayout {
-            Label {
-                text: "<b>justLLAMA</b>"
-            }
-            Label {
-                text: "Created by/maintained by Justin Balcom"
-            }
-
-            Label {
-                text: "<a href=\"https://github.com/bleakj/justLLAMA\">https://github.com/bleakj/justLLAMA</a>"
-                onLinkActivated: (link) => Qt.openUrlExternally(link)
-            }
-            Label {
-                text: "<a href=\"http://justbase.sbs\">http://justbase.sbs</a>"
-                onLinkActivated: (link) => Qt.openUrlExternally(link)
-            }
-            Button {
-                text: "Close"
-                Layout.alignment: Qt.AlignHCenter
-                onClicked: aboutDialog.close()
-            }
-        }
-    }
 }

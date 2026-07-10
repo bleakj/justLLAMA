@@ -452,3 +452,70 @@ def test_get_openai_tools_error_handling(settings, mock_mcp, monkeypatch):
     assert openai_tools == []
     
     manager.shutdown()
+
+
+def test_mcp_custom_environment_variables(settings, mock_mcp, monkeypatch):
+    """Test that McpManager passes configured custom environment variables to StdioServerParameters."""
+    import json
+    import os
+    from unittest.mock import MagicMock
+    from justllama.server.mcp import McpManager
+    import justllama.server.mcp
+
+    # 1. Setup mock server command and custom environment variables
+    server_cmd = "my_custom_server arg1"
+    custom_env = {"MY_TEST_VAR": "TEST_VAL", "ANOTHER_VAR": "ANOTHER_VAL"}
+
+    # Configure mcp/servers
+    settings.set_list("mcp/servers", [server_cmd])
+
+    # Configure mcp/servers_config as a JSON string with the env dictionary
+    config_data = [
+        {
+            "command": server_cmd,
+            "env": custom_env
+        }
+    ]
+    settings.set_json_string("mcp/servers_config", json.dumps(config_data))
+
+    # 2. Spy on StdioServerParameters to capture arguments passed during instantiation
+    original_params_class = justllama.server.mcp.StdioServerParameters
+    mock_params_class = MagicMock(side_effect=original_params_class)
+    monkeypatch.setattr("justllama.server.mcp.StdioServerParameters", mock_params_class)
+
+    # 3. Setup thread synchronization event
+    event = threading.Event()
+    original_connect = McpManager._connect_servers_async
+
+    async def wrapper(self, *args, **kwargs):
+        try:
+            await original_connect(self, *args, **kwargs)
+        finally:
+            event.set()
+
+    monkeypatch.setattr(McpManager, "_connect_servers_async", wrapper)
+
+    # 4. Instantiate McpManager (starts thread and runs connect)
+    manager = McpManager()
+
+    # Wait for the async connection task to finish
+    assert event.wait(timeout=2)
+
+    # 5. Verify StdioServerParameters was instantiated with correct arguments
+    mock_params_class.assert_called_once()
+    args_passed = mock_params_class.call_args[1]
+
+    assert args_passed["command"] == "my_custom_server"
+    assert args_passed["args"] == ["arg1"]
+
+    # Verify the env dictionary includes custom environment variables merged with os.environ
+    passed_env = args_passed["env"]
+    for k, v in custom_env.items():
+        assert passed_env.get(k) == v
+
+    # Verify that existing os.environ keys are still preserved
+    for k, v in os.environ.items():
+        if k not in custom_env:
+            assert passed_env.get(k) == v
+
+    manager.shutdown()

@@ -29,6 +29,7 @@ from justllama.server.external_models import ExternalModelsManager
 from justllama.server.mcp import McpManager
 from justllama.server.chat_manager import ChatManager
 from justllama.server.skills.manager import SkillsManager
+from justllama.server.terminal_manager import terminal_manager
 
 
 def main():
@@ -88,6 +89,7 @@ def main():
         voice_input_manager.unload_model()
         mcp_manager.shutdown()
         skills_manager.shutdown()
+        terminal_manager.shutdown()
         # ImageGenManager has no long-lived subprocess at shutdown time;
         # if a generation thread is still running it will be GC-collected.
     app.aboutToQuit.connect(_shutdown)
@@ -116,6 +118,7 @@ def main():
     ctx.setContextProperty("skillsManager", skills_manager)
     ctx.setContextProperty("chatManager", chat_manager)
     ctx.setContextProperty("externalModels", external_models)
+    ctx.setContextProperty("terminalManager", terminal_manager)
     if qml_file.exists():
         engine.load(qml_file.as_uri())
     else:

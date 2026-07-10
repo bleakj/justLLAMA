@@ -26,6 +26,9 @@ def test_chat_runner_standard(qapp, monkeypatch):
 
     # Mock LlamaClient
     mock_client = MagicMock(spec=LlamaClient)
+    mock_client.props.return_value = {
+        "default_generation_settings": {"model": "test-model"}
+    }
     monkeypatch.setattr("justllama.server.chat_manager.LlamaClient", lambda port: mock_client)
 
     class StandardResponse:
@@ -102,6 +105,9 @@ def test_chat_runner_tool_calling(qapp, monkeypatch):
     # Mock LlamaClient
     mock_client = MagicMock(spec=LlamaClient)
     monkeypatch.setattr("justllama.server.chat_manager.LlamaClient", lambda port: mock_client)
+    mock_client.props.return_value = {
+        "default_generation_settings": {"model": "test-model"}
+    }
 
     # Mock McpManager
     mock_mcp = MagicMock()
@@ -404,3 +410,88 @@ def test_chat_manager_stop_generation(qapp, monkeypatch):
     runner.stop.assert_called_once()
     runner.wait.assert_called_once()
     assert manager._runner is None
+
+
+def test_chat_runner_model_mismatch(qapp, monkeypatch):
+    """Test that a loaded-model mismatch aborts before any completion call.
+
+    If the server's /props reports a different model than the one requested,
+    ChatRunner must emit an error and never call chat_completion so the wrong
+    model can never reply.
+    """
+    mock_settings = MagicMock()
+    mock_settings.get_int.return_value = 8080
+    monkeypatch.setattr("justllama.server.chat_manager.AppSettings", lambda: mock_settings)
+
+    mock_client = MagicMock(spec=LlamaClient)
+    monkeypatch.setattr("justllama.server.chat_manager.LlamaClient", lambda port: mock_client)
+
+    # Server is running a different model than requested.
+    mock_client.props.return_value = {
+        "default_generation_settings": {"model": "/models/other-model.gguf"}
+    }
+
+    chat_calls = []
+    mock_client.chat_completion.side_effect = lambda *a, **k: chat_calls.append(k)
+
+    messages = [{"role": "user", "content": "Hi"}]
+    params = {"model": "/models/requested-model.gguf"}
+
+    runner = ChatRunner(messages, params, mcp_manager=None)
+    errors = []
+    runner.error_occurred.connect(errors.append)
+
+    runner.run()
+
+    assert len(chat_calls) == 0, "chat_completion must not be called on mismatch"
+    assert len(errors) == 1
+    assert "Model mismatch" in errors[0]
+    assert "requested-model" in errors[0]
+    assert "other-model" in errors[0]
+
+
+def test_chat_runner_model_match(qapp, monkeypatch):
+    """Test that a correct loaded model allows generation to proceed.
+
+    When /props reports the requested model (as a substring of the loaded
+    path), the runner must verify and then call chat_completion successfully.
+    """
+    mock_settings = MagicMock()
+    mock_settings.get_int.return_value = 8080
+    monkeypatch.setattr("justllama.server.chat_manager.AppSettings", lambda: mock_settings)
+
+    mock_client = MagicMock(spec=LlamaClient)
+    monkeypatch.setattr("justllama.server.chat_manager.LlamaClient", lambda port: mock_client)
+
+    mock_client.props.return_value = {
+        "default_generation_settings": {"model": "/models/requested-model.gguf"}
+    }
+
+    class MatchResponse:
+        def iter_lines(self):
+            yield b'data: {"choices": [{"delta": {"content": "OK"}}]}'
+            yield b'data: [DONE]'
+
+        def close(self):
+            pass
+
+    chat_calls = []
+    def spy_chat_completion(*args, **kwargs):
+        chat_calls.append(dict(kwargs))
+        return MatchResponse()
+    mock_client.chat_completion.side_effect = spy_chat_completion
+
+    messages = [{"role": "user", "content": "Hi"}]
+    params = {"model": "/models/requested-model.gguf"}
+
+    runner = ChatRunner(messages, params, mcp_manager=None)
+    errors = []
+    completed = []
+    runner.error_occurred.connect(errors.append)
+    runner.generation_complete.connect(completed.append)
+
+    runner.run()
+
+    assert len(errors) == 0
+    assert len(chat_calls) == 1, "chat_completion must be called when models match"
+    assert len(completed) == 1
