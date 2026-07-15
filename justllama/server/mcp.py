@@ -157,11 +157,15 @@ class McpManager(QObject):
                     )
 
                     stack = AsyncExitStack()
-                    transport = await stack.enter_async_context(stdio_client(server_params))
-                    read, write = transport
+                    try:
+                        transport = await stack.enter_async_context(stdio_client(server_params))
+                        read, write = transport
 
-                    session = await stack.enter_async_context(ClientSession(read, write))
-                    await session.initialize()
+                        session = await stack.enter_async_context(ClientSession(read, write))
+                        await session.initialize()
+                    except Exception:
+                        await stack.aclose()
+                        raise
 
                     self._sessions[server_str] = (session, stack)
                     print(f"[MCP] Successfully connected to server: {server_str}")

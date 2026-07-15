@@ -2,6 +2,7 @@ import pytest
 import threading
 import asyncio
 from unittest.mock import MagicMock, AsyncMock
+import json
 from PySide6.QtCore import QSettings
 
 # ---------------------------------------------------------------------------
@@ -517,5 +518,60 @@ def test_mcp_custom_environment_variables(settings, mock_mcp, monkeypatch):
     for k, v in os.environ.items():
         if k not in custom_env:
             assert passed_env.get(k) == v
+
+    manager.shutdown()
+
+
+def test_failing_connection_cleans_up_async_exit_stack(settings, monkeypatch, capsys):
+    """When ClientSession __aenter__ fails (e.g. MCP protocol error), AsyncExitStack must be closed."""
+    from justllama.server.mcp import McpManager
+
+    import time
+
+    # Simulate: stdio_client starts the process successfully,
+    # but ClientSession raises during __aenter__ (MCP handshake fails).
+    mock_read = MagicMock(name="read")
+    mock_write = MagicMock(name="write")
+    mock_transport = (mock_read, mock_write)
+
+    mock_stdio_context = MagicMock()
+    mock_stdio_context.__aenter__ = AsyncMock(return_value=mock_transport)
+    mock_stdio_context.__aexit__ = AsyncMock(return_value=None)
+
+    mock_session_context = MagicMock()
+    mock_session_context.__aenter__ = AsyncMock(side_effect=ConnectionError("MCP handshake failed"))
+    mock_session_context.__aexit__ = AsyncMock(return_value=None)
+
+    mock_stdio_client = MagicMock(return_value=mock_stdio_context)
+    mock_client_session = MagicMock(return_value=mock_session_context)
+
+    monkeypatch.setattr("justllama.server.mcp.stdio_client", mock_stdio_client)
+    monkeypatch.setattr("justllama.server.mcp.ClientSession", mock_client_session)
+
+    server_str = "some-mcp-server --flag"
+    settings.set_list("mcp/servers", [server_str])
+    settings.set_json_string("mcp/servers_config", json.dumps([
+        {"command": server_str, "enabled": True},
+    ]))
+
+    manager = McpManager()
+
+    # Wait for async connection attempt to finish
+    time.sleep(2)
+
+    captured = capsys.readouterr()
+    print(f"=== stdout ===\n{captured.out}")
+    if captured.err:
+        print(f"=== stderr ===\n{captured.err}")
+        assert "Attempted to exit cancel scope" not in captured.err, \
+            "LEAKED cancel scope RuntimeError detected!"
+        assert "Task exception was never retrieved" not in captured.err, \
+            "LEAKED task exception detected!"
+
+    assert "Failed to connect to server" in captured.out, \
+        "Expected connection failure message"
+
+    # stdio_client's __aexit__ should have been called via stack.aclose()
+    mock_stdio_context.__aexit__.assert_called_once()
 
     manager.shutdown()
