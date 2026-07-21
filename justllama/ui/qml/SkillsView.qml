@@ -99,7 +99,7 @@ Kirigami.ScrollablePage {
 
                         // Avoid duplicates by command
                         if (catalogRow.mcpLayoutRef.mcpServersList.some(function (s) { return (s.command || "") === selected.command })) {
-                            errorToast.show("Server '" + selected.name + "' is already added.")
+                            toast.show("Server '" + selected.name + "' is already added.", "error")
                             return
                         }
 
@@ -419,7 +419,7 @@ Kirigami.ScrollablePage {
                             skillsRepeater.model = skillsManager.get_skills_list()
                             customSkillSheet.close()
                         } else {
-                            errorToast.show("Failed to save skill. Check the filename.")
+                            toast.show("Failed to save skill. Check the filename.", "error")
                         }
                     }
                 }
@@ -497,7 +497,7 @@ Kirigami.ScrollablePage {
                                     throw new Error("Must be a JSON object");
                                 }
                             } catch (e) {
-                                errorToast.show("Invalid JSON: " + e.message);
+                                toast.show("Invalid JSON: " + e.message, "error");
                                 return;
                             }
                         }
@@ -520,8 +520,8 @@ Kirigami.ScrollablePage {
         }
     }
 
-    ErrorToast {
-        id: errorToast
+    Toast {
+        id: toast
         anchors.fill: parent
     }
 }

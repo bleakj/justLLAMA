@@ -289,3 +289,30 @@ class TestPathFor:
         """Unicode characters in the name are preserved."""
         result = profiles._path_for("日本語モデル")
         assert result.name == "日本語モデル.json"
+
+
+# ---------------------------------------------------------------------------
+# get_model_profile() & get_effective_config() tests
+# ---------------------------------------------------------------------------
+
+class TestModelProfileConfig:
+    def test_get_and_save_model_profile(self, profiles):
+        model_path = "/models/llama-3-8b.gguf"
+        data = {"jinja": True, "ctx_size": 8192, "flash_attn": "auto"}
+        assert profiles.save_model_profile(model_path, json.dumps(data)) is True
+
+        loaded = profiles.get_model_profile(model_path)
+        assert loaded["jinja"] is True
+        assert loaded["ctx_size"] == 8192
+        assert loaded["flash_attn"] == "auto"
+
+    def test_get_effective_config_merges_defaults_and_overrides(self, profiles):
+        model_path = "/models/deepseek-r1.gguf"
+        profiles.save_model_profile(model_path, json.dumps({"jinja": True, "extra_args": ["--rope-scaling", "linear"]}))
+
+        eff = profiles.get_effective_config(model_path, None)
+        assert eff["model_path"] == model_path
+        assert eff["jinja"] is True
+        assert eff["extra_args"] == ["--rope-scaling", "linear"]
+        assert eff["ctx_size"] == 4096
+        assert eff["n_gpu_layers"] == "auto"

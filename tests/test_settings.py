@@ -178,7 +178,10 @@ class TestGetAllServerConfig:
         expected_keys = {
             "binary", "model_path", "port", "ctx_size",
             "n_gpu_layers", "threads", "batch_size", "ubatch_size",
-            "flash_attn", "mmap", "mlock", "numa", "extra_args",
+            "flash_attn", "mmap", "mlock", "numa",
+            "cache_type_k", "cache_type_v", "cpu_moe", "n_cpu_moe",
+            "model_draft", "gpu_layers_draft", "draft_max", "draft_min",
+            "extra_args",
         }
         assert set(cfg.keys()) == expected_keys
 

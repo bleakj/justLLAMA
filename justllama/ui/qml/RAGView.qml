@@ -177,7 +177,7 @@ Kirigami.Page {
         
         if (result.error) {
             console.error("Ingestion error:", result.error)
-            errorToast.show("Ingestion failed: " + result.error)
+            toast.show("Ingestion failed: " + result.error, "error")
             return
         }
         
@@ -211,12 +211,12 @@ Kirigami.Page {
             ragPage.chunkCount = vectorStore.count()
         } catch (e) {
             console.error("Failed to refresh count:", e)
-            errorToast.show("Failed to refresh document count: " + e.message)
+            toast.show("Failed to refresh document count: " + e.message, "error")
             ragPage.chunkCount = 0
         }
     }
-    ErrorToast {
-        id: errorToast
+    Toast {
+        id: toast
         anchors.fill: parent
     }
 }

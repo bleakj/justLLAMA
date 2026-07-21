@@ -41,7 +41,7 @@ Kirigami.ScrollablePage {
         function onError(msg) {
             videoPage.isGenerating = false
             videoPage.statusText = "ERROR: " + msg
-            errorToast.show(msg)
+            toast.show(msg, "error")
         }
     }
 
@@ -349,8 +349,8 @@ Kirigami.ScrollablePage {
         }
     }
 
-    ErrorToast {
-        id: errorToast
+    Toast {
+        id: toast
         anchors.fill: parent
     }
 }

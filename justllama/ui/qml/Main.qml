@@ -126,7 +126,7 @@ Kirigami.ApplicationWindow {
         }
         function onServer_error(msg) {
             console.log("Server error:", msg)
-            errorToast.show("Server error: " + msg)
+            toast.show("Server error: " + msg, "error")
         }
     }
 
@@ -159,8 +159,8 @@ Kirigami.ApplicationWindow {
         }
     }
 
-    ErrorToast {
-        id: errorToast
+    Toast {
+        id: toast
         anchors.fill: parent
     }
 

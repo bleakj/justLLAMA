@@ -209,7 +209,7 @@ Kirigami.Page {
             }
         } catch (e) {
             console.error("Failed to refresh memories:", e)
-            errorToast.show("Failed to refresh memories: " + e.message)
+            toast.show("Failed to refresh memories: " + e.message, "error")
         }
     }
 
@@ -219,8 +219,8 @@ Kirigami.Page {
     }
 
     Component.onCompleted: refreshMemories()
-    ErrorToast {
-        id: errorToast
+    Toast {
+        id: toast
         anchors.fill: parent
     }
 }

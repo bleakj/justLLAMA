@@ -1,6 +1,7 @@
 """llama-server process lifecycle management."""
 
 import contextlib
+import json
 import shutil
 import signal
 import subprocess
@@ -9,7 +10,8 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, Signal, Slot
 
-
+from justllama.server.config import ServerConfig
+from justllama.models.profiles import ModelProfiles
 class _ServerLogReader(QThread):
     """Read stdout/stderr from the subprocess in a background thread."""
 
@@ -95,9 +97,10 @@ class ServerManager(QObject):
         return self._process.poll() is None
 
     @Slot(str, str, int, int, int, int, result=bool)
+    @Slot(str, str, int, int, int, int, str, result=bool)
     def start(self, binary: str, model_path: str, port: int = 8080,
               ctx_size: int = 4096, n_gpu_layers: int = 99,
-              threads: int = -1) -> bool:
+              threads: int = -1, profile_json: str = "") -> bool:
         """Start the llama-server process.
 
         Args:
@@ -107,18 +110,11 @@ class ServerManager(QObject):
             ctx_size: Context window size.
             n_gpu_layers: Number of layers to offload to GPU.
             threads: Number of CPU threads (-1 = auto).
+            profile_json: Optional JSON string of profile overrides.
 
         Returns:
             True if started successfully, False otherwise.
         """
-        # Pre-validate numeric arguments before any side effects
-        if not (1024 <= port <= 65535):
-            self.server_error.emit(f"Port must be 1024-65535, got {port}")
-            return False
-        if ctx_size < 256:
-            self.server_error.emit(f"context size must be >= 256, got {ctx_size}")
-            return False
-
         if self.is_running():
             self.log_line.emit("Server already managed by us, stopping first...")
             self.stop()
@@ -126,44 +122,41 @@ class ServerManager(QObject):
         # Kill any process occupying the target port (e.g. stray llama-server)
         self._kill_port(port)
 
-        # Validate binary
-        if not shutil.which(binary) and not Path(binary).is_file():
-            self.server_error.emit(f"llama-server binary not found: {binary}")
+        # Get effective settings from ModelProfiles + global settings
+        mp = ModelProfiles()
+        eff = mp.get_effective_config(model_path, self._settings)
+
+        # System runtime overrides (binary, port, non-default ctx/gpu/threads)
+        if binary:
+            eff["binary"] = binary
+        if port:
+            eff["port"] = port
+        if ctx_size != 4096:
+            eff["ctx_size"] = ctx_size
+        if n_gpu_layers not in (99, -1, "auto"):
+            eff["n_gpu_layers"] = n_gpu_layers
+        if threads != -1:
+            eff["threads"] = threads
+
+        # Parse profile_json overrides if passed
+        if profile_json:
+            try:
+                pdict = json.loads(profile_json)
+                if isinstance(pdict, dict):
+                    for k, v in pdict.items():
+                        if v is not None and v != "":
+                            eff[k] = v
+            except Exception as e:
+                self.log_line.emit(f"Warning: Failed to parse profile_json: {e}")
+
+        cfg = ServerConfig.from_dict(eff)
+        errors = cfg.validate()
+        if errors:
+            self.server_error.emit("; ".join(errors))
             return False
 
-        # Validate model
-        if not Path(model_path).is_file():
-            self.server_error.emit(f"Model file not found: {model_path}")
-            return False
+        cmd = cfg.build_command()
 
-        # Build command
-        ngl_val = "auto" if n_gpu_layers in (99, -1) else str(n_gpu_layers)
-        cmd = [
-            binary,
-            "--model", model_path,
-            "--port", str(port),
-            "-c", str(ctx_size),
-            "-ngl", ngl_val,
-        ]
-        if threads > 0:
-            cmd.extend(["--threads", str(threads)])
-
-        # Append memory configurations if settings are available
-        if self._settings:
-            if self._settings.get_bool("server/flash_attn"):
-                cmd.extend(["--flash-attn", "on"])
-            if not self._settings.get_bool("server/mmap"):
-                cmd.append("--no-mmap")
-            if self._settings.get_bool("server/mlock"):
-                cmd.append("--mlock")
-            
-            batch_size = self._settings.get_int("server/batch_size")
-            if batch_size > 0:
-                cmd.extend(["--batch-size", str(batch_size)])
-            
-            ubatch_size = self._settings.get_int("server/ubatch_size")
-            if ubatch_size > 0:
-                cmd.extend(["--ubatch-size", str(ubatch_size)])
         # Set env so shared libs next to the binary are found (CUDA, etc.)
         import os
         env = os.environ.copy()
@@ -183,7 +176,6 @@ class ServerManager(QObject):
         except OSError as e:
             self.server_error.emit(f"Failed to start server: {e}")
             return False
-
         self._port = port
 
         # Start log readers

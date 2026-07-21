@@ -189,6 +189,108 @@ Kirigami.ScrollablePage {
                         onEditingFinished: appSettings.set_string("server/binary", text)
                     }
                 }
+
+                Kirigami.Separator { Layout.fillWidth: true; Layout.topMargin: Kirigami.Units.smallSpacing }
+                Label {
+                    text: "Performance (advanced)"
+                    font.bold: true
+                    color: Kirigami.Theme.disabledTextColor
+                }
+                Label {
+                    text: "Global defaults \u2014 per-model profiles override these."
+                    color: Kirigami.Theme.disabledTextColor
+                    font.pointSize: 9
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label { text: "KV Cache (K/V):"; Layout.preferredWidth: 120 }
+                    ComboBox {
+                        id: cacheKCombo
+                        property bool _ready: false
+                        model: ["default", "f16", "q8_0", "q4_0"]
+                        currentIndex: {
+                            var v = appSettings.get_string("server/cache_type_k")
+                            var idx = model.indexOf(v)
+                            return idx > 0 ? idx : 0
+                        }
+                        Component.onCompleted: _ready = true
+                        onCurrentIndexChanged: {
+                            if (!_ready) return
+                            appSettings.set_string("server/cache_type_k", currentIndex === 0 ? "" : currentText)
+                        }
+                        Layout.fillWidth: true
+                    }
+                    ComboBox {
+                        id: cacheVCombo
+                        property bool _ready: false
+                        model: ["default", "f16", "q8_0", "q4_0"]
+                        currentIndex: {
+                            var v = appSettings.get_string("server/cache_type_v")
+                            var idx = model.indexOf(v)
+                            return idx > 0 ? idx : 0
+                        }
+                        Component.onCompleted: _ready = true
+                        onCurrentIndexChanged: {
+                            if (!_ready) return
+                            appSettings.set_string("server/cache_type_v", currentIndex === 0 ? "" : currentText)
+                        }
+                        Layout.fillWidth: true
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label { text: "MoE Offload:"; Layout.preferredWidth: 120 }
+                    CheckBox {
+                        id: cpuMoeCheck
+                        text: "All experts \u2192 CPU"
+                        checked: appSettings.get_bool("server/cpu_moe")
+                        onToggled: appSettings.set_bool("server/cpu_moe", checked)
+                    }
+                    Label { text: "or first N:" }
+                    SpinBox {
+                        from: 0; to: 999
+                        enabled: !cpuMoeCheck.checked
+                        value: appSettings.get_int("server/n_cpu_moe")
+                        onValueModified: appSettings.set_int("server/n_cpu_moe", value)
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label { text: "Draft Model:"; Layout.preferredWidth: 120 }
+                    TextField {
+                        id: draftField
+                        Layout.fillWidth: true
+                        placeholderText: "path to draft model (shared vocab required)"
+                        text: appSettings.get_string("server/model_draft")
+                        onEditingFinished: appSettings.set_string("server/model_draft", text)
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: draftField.text.trim().length > 0
+                    Label { text: "Draft ngl/max/min:"; Layout.preferredWidth: 120 }
+                    SpinBox {
+                        from: 0; to: 999
+                        value: appSettings.get_int("server/gpu_layers_draft")
+                        onValueModified: appSettings.set_int("server/gpu_layers_draft", value)
+                    }
+                    SpinBox {
+                        from: 0; to: 64
+                        value: appSettings.get_int("server/draft_max")
+                        onValueModified: appSettings.set_int("server/draft_max", value)
+                    }
+                    SpinBox {
+                        from: 0; to: 64
+                        value: appSettings.get_int("server/draft_min")
+                        onValueModified: appSettings.set_int("server/draft_min", value)
+                    }
+                }
             }
         }
 
@@ -660,7 +762,7 @@ Kirigami.ScrollablePage {
                         Layout.preferredWidth: 120
                         onClicked: {
                             appSettings.set_string("cloud_endpoints/nvidia", nvidiaEndpointField.text)
-                            successToast.show("NVIDIA endpoint saved")
+                            toast.show("NVIDIA endpoint saved", "success")
                         }
                     }
                 }
@@ -713,7 +815,7 @@ Kirigami.ScrollablePage {
                         Layout.preferredWidth: 120
                         onClicked: {
                             appSettings.set_string("cloud_endpoints/openrouter", openrouterEndpointField.text)
-                            successToast.show("OpenRouter endpoint saved")
+                            toast.show("OpenRouter endpoint saved", "success")
                         }
                     }
                 }
@@ -766,7 +868,7 @@ Kirigami.ScrollablePage {
                         Layout.preferredWidth: 120
                         onClicked: {
                             appSettings.set_string("cloud_endpoints/opencode", opencodeEndpointField.text)
-                            successToast.show("Opencode endpoint saved")
+                            toast.show("Opencode endpoint saved", "success")
                         }
                     }
                 }
@@ -819,7 +921,7 @@ Kirigami.ScrollablePage {
                         Layout.preferredWidth: 120
                         onClicked: {
                             appSettings.set_string("cloud_endpoints/gemini", geminiEndpointField.text)
-                            successToast.show("Gemini endpoint saved")
+                            toast.show("Gemini endpoint saved", "success")
                         }
                     }
                 }
@@ -872,7 +974,7 @@ Kirigami.ScrollablePage {
                         Layout.preferredWidth: 120
                         onClicked: {
                             appSettings.set_string("cloud_endpoints/kilocode", kilocodeEndpointField.text)
-                            successToast.show("Kilocode endpoint saved")
+                            toast.show("Kilocode endpoint saved", "success")
                         }
                     }
                 }
@@ -1035,7 +1137,7 @@ Kirigami.ScrollablePage {
                             skillsRepeater.model = skillsManager.get_skills_list()
                             customSkillSheet.close()
                         } else {
-                            errorToast.show("Failed to save skill. Check the filename.")
+                            toast.show("Failed to save skill. Check the filename.", "error")
                         }
                     }
                 }
@@ -1104,18 +1206,8 @@ Kirigami.ScrollablePage {
             serverLog.text += "ERROR: " + msg + "\n"
         }
     }
-    ErrorToast {
-        id: errorToast
-        anchors.fill: parent
-    }
-    MessageDialog {
-        id: councilErrorDialog
-        title: "Council Selection Error"
-        text: ""
-        buttons: MessageDialog.Ok
-    }
-    SuccessToast {
-        id: successToast
+    Toast {
+        id: toast
         anchors.fill: parent
     }
 }

@@ -29,6 +29,7 @@ def test_chat_runner_standard(qapp, monkeypatch):
     mock_client.props.return_value = {
         "default_generation_settings": {"model": "test-model"}
     }
+    mock_client.models.return_value = [{"id": "test-model"}]
     monkeypatch.setattr("justllama.server.chat_manager.LlamaClient", lambda port: mock_client)
 
     class StandardResponse:
@@ -104,6 +105,7 @@ def test_chat_runner_plan_mode_no_tools(qapp, monkeypatch):
     mock_client.props.return_value = {
         "default_generation_settings": {"model": "test-model"}
     }
+    mock_client.models.return_value = [{"id": "test-model"}]
     monkeypatch.setattr("justllama.server.chat_manager.LlamaClient", lambda port: mock_client)
 
     # Create a mock MCP manager that would normally return tools
@@ -178,7 +180,7 @@ def test_chat_runner_tool_calling(qapp, monkeypatch):
     mock_client.props.return_value = {
         "default_generation_settings": {"model": "test-model"}
     }
-
+    mock_client.models.return_value = [{"id": "test-model"}]
     # Mock McpManager
     mock_mcp = MagicMock()
     fake_tools = [
@@ -497,22 +499,21 @@ def test_chat_runner_model_mismatch(qapp, monkeypatch):
     monkeypatch.setattr("justllama.server.chat_manager.LlamaClient", lambda port: mock_client)
 
     # Server is running a different model than requested.
+    mock_client = MagicMock(spec=LlamaClient)
+    monkeypatch.setattr("justllama.server.chat_manager.LlamaClient", lambda port: mock_client)
     mock_client.props.return_value = {
         "default_generation_settings": {"model": "/models/other-model.gguf"}
     }
-
+    mock_client.models.return_value = [{"id": "/models/other-model.gguf"}]
     chat_calls = []
     mock_client.chat_completion.side_effect = lambda *a, **k: chat_calls.append(k)
 
     messages = [{"role": "user", "content": "Hi"}]
     params = {"model": "/models/requested-model.gguf"}
-
     runner = ChatRunner(messages, params, mcp_manager=None)
     errors = []
     runner.error_occurred.connect(errors.append)
-
     runner.run()
-
     assert len(chat_calls) == 0, "chat_completion must not be called on mismatch"
     assert len(errors) == 1
     assert "Model mismatch" in errors[0]
@@ -532,11 +533,10 @@ def test_chat_runner_model_match(qapp, monkeypatch):
 
     mock_client = MagicMock(spec=LlamaClient)
     monkeypatch.setattr("justllama.server.chat_manager.LlamaClient", lambda port: mock_client)
-
     mock_client.props.return_value = {
         "default_generation_settings": {"model": "/models/requested-model.gguf"}
     }
-
+    mock_client.models.return_value = [{"id": "/models/requested-model.gguf"}]
     class MatchResponse:
         def iter_lines(self):
             yield b'data: {"choices": [{"delta": {"content": "OK"}}]}'

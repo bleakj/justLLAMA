@@ -173,7 +173,7 @@ class TestBuildCommand:
         assert "--ctx-size" in cmd
         assert "4096" in cmd
         assert "--n-gpu-layers" in cmd
-        assert "99" in cmd
+        assert "auto" in cmd
         assert "--batch-size" in cmd
         assert "512" in cmd
         assert "--ubatch-size" in cmd
@@ -193,14 +193,27 @@ class TestBuildCommandFlashAttn:
     def test_flash_attn_true_adds_flag(self):
         cfg = _valid_config(flash_attn=True)
         cmd = cfg.build_command()
-        assert "--flash-attn" in cmd
+        idx = cmd.index("--flash-attn")
+        assert cmd[idx + 1] == "on"
 
-    def test_flash_attn_false_omits_flag(self):
+    def test_flash_attn_false_sets_off(self):
         cfg = _valid_config(flash_attn=False)
         cmd = cfg.build_command()
-        assert "--flash-attn" not in cmd
+        idx = cmd.index("--flash-attn")
+        assert cmd[idx + 1] == "off"
 
+    def test_flash_attn_auto_sets_auto(self):
+        cfg = _valid_config(flash_attn="auto")
+        cmd = cfg.build_command()
+        idx = cmd.index("--flash-attn")
+        assert cmd[idx + 1] == "auto"
 
+    def test_jinja_and_chat_template_flags(self):
+        cfg = _valid_config(jinja=True, chat_template="chatml")
+        cmd = cfg.build_command()
+        assert "--jinja" in cmd
+        idx = cmd.index("--chat-template")
+        assert cmd[idx + 1] == "chatml"
 # ---------------------------------------------------------------------------
 # build_command() — mlock / mmap
 # ---------------------------------------------------------------------------
@@ -232,6 +245,67 @@ class TestBuildCommandMlockMmap:
         cmd = cfg.build_command()
         assert "--mlock" in cmd
         assert "--no-mmap" not in cmd
+
+
+# ---------------------------------------------------------------------------
+# build_command() — performance knobs (KV cache / MoE offload / draft)
+# ---------------------------------------------------------------------------
+
+class TestBuildCommandPerformanceKnobs:
+    def test_cache_type_flags(self):
+        cfg = _valid_config(cache_type_k="q8_0", cache_type_v="q4_0")
+        cmd = cfg.build_command()
+        assert cmd[cmd.index("--cache-type-k") + 1] == "q8_0"
+        assert cmd[cmd.index("--cache-type-v") + 1] == "q4_0"
+
+    def test_cache_type_empty_omits(self):
+        cfg = _valid_config()
+        cmd = cfg.build_command()
+        assert "--cache-type-k" not in cmd
+        assert "--cache-type-v" not in cmd
+
+    def test_cpu_moe_flag(self):
+        cfg = _valid_config(cpu_moe=True)
+        cmd = cfg.build_command()
+        assert "--cpu-moe" in cmd
+        assert "--n-cpu-moe" not in cmd
+
+    def test_n_cpu_moe_takes_precedence(self):
+        cfg = _valid_config(cpu_moe=True, n_cpu_moe=24)
+        cmd = cfg.build_command()
+        assert cmd[cmd.index("--n-cpu-moe") + 1] == "24"
+        assert "--cpu-moe" not in cmd
+
+    def test_n_cpu_moe_string_coerced(self):
+        cfg = _valid_config(n_cpu_moe="18")
+        cmd = cfg.build_command()
+        assert cmd[cmd.index("--n-cpu-moe") + 1] == "18"
+
+    def test_moe_omitted_by_default(self):
+        cfg = _valid_config()
+        cmd = cfg.build_command()
+        assert "--cpu-moe" not in cmd
+        assert "--n-cpu-moe" not in cmd
+
+    def test_draft_model_flags(self):
+        cfg = _valid_config(
+            model_draft="/fake/draft.gguf",
+            gpu_layers_draft=99,
+            draft_max=16,
+            draft_min=2,
+        )
+        cmd = cfg.build_command()
+        assert cmd[cmd.index("--model-draft") + 1] == "/fake/draft.gguf"
+        assert cmd[cmd.index("--gpu-layers-draft") + 1] == "99"
+        assert cmd[cmd.index("--draft-max") + 1] == "16"
+        assert cmd[cmd.index("--draft-min") + 1] == "2"
+
+    def test_draft_omitted_when_no_model(self):
+        cfg = _valid_config(draft_max=16, draft_min=2)
+        cmd = cfg.build_command()
+        assert "--model-draft" not in cmd
+        assert "--gpu-layers-draft" not in cmd
+        assert "--draft-max" not in cmd
 
 
 # ---------------------------------------------------------------------------
@@ -422,9 +496,11 @@ class TestFromDict:
         assert cfg.binary == "llama-server"
         assert cfg.model_path == ""
         assert cfg.ctx_size == 4096
-        assert cfg.n_gpu_layers == 99
+        assert cfg.n_gpu_layers == "auto"
         assert cfg.threads == -1
-        assert cfg.flash_attn is True
+        assert cfg.flash_attn == "on"
+        assert cfg.jinja is False
+        assert cfg.chat_template == ""
         assert cfg.mmap is True
         assert cfg.mlock is False
         assert cfg.numa == ""

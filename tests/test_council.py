@@ -291,7 +291,7 @@ def test_council_mixed_config(qapp, tmp_path, monkeypatch):
         def is_running(self):
             return self._running
 
-        def start(self, binary, model, port, ctx_size, n_gpu_layers, threads):
+        def start(self, binary, model, port, ctx_size=4096, n_gpu_layers=99, threads=-1):
             self._running = True
             self.start_calls.append((binary, model, port, ctx_size, n_gpu_layers, threads))
             return True

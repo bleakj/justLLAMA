@@ -41,7 +41,7 @@ Kirigami.ScrollablePage {
         function onError(msg) {
             imagePage.isGenerating = false
             imagePage.statusText = "ERROR: " + msg
-            errorToast.show(msg)
+            toast.show(msg, "error")
         }
     }
 
@@ -325,8 +325,8 @@ Kirigami.ScrollablePage {
     }
 
     // ── Toast notifications ─────────────────────────────────────────
-    ErrorToast {
-        id: errorToast
+    Toast {
+        id: toast
         anchors.fill: parent
     }
 }

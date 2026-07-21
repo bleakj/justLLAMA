@@ -119,9 +119,9 @@ Kirigami.Page {
                                 onClicked: {
                                     var result = externalModels.select_model("nvidia", 1, modelData);
                                     if (result !== "") {
-                                        errorToast.show(result);
+                                        toast.show(result, "error");
                                     } else {
-                                        successToast.show("Assigned to Council Slot 1");
+                                        toast.show("Assigned to Council Slot 1", "success");
                                     }
                                 }
                             }
@@ -131,9 +131,9 @@ Kirigami.Page {
                                 onClicked: {
                                     var result = externalModels.select_model("nvidia", 2, modelData);
                                     if (result !== "") {
-                                        errorToast.show(result);
+                                        toast.show(result, "error");
                                     } else {
-                                        successToast.show("Assigned to Council Slot 2");
+                                        toast.show("Assigned to Council Slot 2", "success");
                                     }
                                 }
                             }
@@ -143,9 +143,9 @@ Kirigami.Page {
                                 onClicked: {
                                     var result = externalModels.select_model("nvidia", 3, modelData);
                                     if (result !== "") {
-                                        errorToast.show(result);
+                                        toast.show(result, "error");
                                     } else {
-                                        successToast.show("Assigned to Council Slot 3");
+                                        toast.show("Assigned to Council Slot 3", "success");
                                     }
                                 }
                             }
@@ -158,12 +158,12 @@ Kirigami.Page {
                     function onModels_fetched(provider, ids) {
                         if (provider === "nvidia") {
                             root.refreshList("nvidia", searchNvidia, enabledSwitchNvidia, listNvidia);
-                            successToast.show(ids.length + " NVIDIA models fetched");
+                            toast.show(ids.length + " NVIDIA models fetched", "success");
                         }
                     }
                     function onModels_error(provider, message) {
                         if (provider === "nvidia") {
-                            errorToast.show("NVIDIA: " + message);
+                            toast.show("NVIDIA: " + message, "error");
                         }
                     }
                     function onCache_cleared(provider) {
@@ -239,9 +239,9 @@ Kirigami.Page {
                                 onClicked: {
                                     var result = externalModels.select_model("openrouter", 1, modelData);
                                     if (result !== "") {
-                                        errorToast.show(result);
+                                        toast.show(result, "error");
                                     } else {
-                                        successToast.show("Assigned to Council Slot 1");
+                                        toast.show("Assigned to Council Slot 1", "success");
                                     }
                                 }
                             }
@@ -251,9 +251,9 @@ Kirigami.Page {
                                 onClicked: {
                                     var result = externalModels.select_model("openrouter", 2, modelData);
                                     if (result !== "") {
-                                        errorToast.show(result);
+                                        toast.show(result, "error");
                                     } else {
-                                        successToast.show("Assigned to Council Slot 2");
+                                        toast.show("Assigned to Council Slot 2", "success");
                                     }
                                 }
                             }
@@ -263,9 +263,9 @@ Kirigami.Page {
                                 onClicked: {
                                     var result = externalModels.select_model("openrouter", 3, modelData);
                                     if (result !== "") {
-                                        errorToast.show(result);
+                                        toast.show(result, "error");
                                     } else {
-                                        successToast.show("Assigned to Council Slot 3");
+                                        toast.show("Assigned to Council Slot 3", "success");
                                     }
                                 }
                             }
@@ -278,12 +278,12 @@ Kirigami.Page {
                     function onModels_fetched(provider, ids) {
                         if (provider === "openrouter") {
                             root.refreshList("openrouter", searchOpenrouter, enabledSwitchOpenrouter, listOpenrouter);
-                            successToast.show(ids.length + " OpenRouter models fetched");
+                            toast.show(ids.length + " OpenRouter models fetched", "success");
                         }
                     }
                     function onModels_error(provider, message) {
                         if (provider === "openrouter") {
-                            errorToast.show("OpenRouter: " + message);
+                            toast.show("OpenRouter: " + message, "error");
                         }
                     }
                     function onCache_cleared(provider) {
@@ -359,9 +359,9 @@ Kirigami.Page {
                                 onClicked: {
                                     var result = externalModels.select_model("opencode", 1, modelData);
                                     if (result !== "") {
-                                        errorToast.show(result);
+                                        toast.show(result, "error");
                                     } else {
-                                        successToast.show("Assigned to Council Slot 1");
+                                        toast.show("Assigned to Council Slot 1", "success");
                                     }
                                 }
                             }
@@ -371,9 +371,9 @@ Kirigami.Page {
                                 onClicked: {
                                     var result = externalModels.select_model("opencode", 2, modelData);
                                     if (result !== "") {
-                                        errorToast.show(result);
+                                        toast.show(result, "error");
                                     } else {
-                                        successToast.show("Assigned to Council Slot 2");
+                                        toast.show("Assigned to Council Slot 2", "success");
                                     }
                                 }
                             }
@@ -383,9 +383,9 @@ Kirigami.Page {
                                 onClicked: {
                                     var result = externalModels.select_model("opencode", 3, modelData);
                                     if (result !== "") {
-                                        errorToast.show(result);
+                                        toast.show(result, "error");
                                     } else {
-                                        successToast.show("Assigned to Council Slot 3");
+                                        toast.show("Assigned to Council Slot 3", "success");
                                     }
                                 }
                             }
@@ -398,12 +398,12 @@ Kirigami.Page {
                     function onModels_fetched(provider, ids) {
                         if (provider === "opencode") {
                             root.refreshList("opencode", searchOpencode, enabledSwitchOpencode, listOpencode);
-                            successToast.show(ids.length + " Opencode models fetched");
+                            toast.show(ids.length + " Opencode models fetched", "success");
                         }
                     }
                     function onModels_error(provider, message) {
                         if (provider === "opencode") {
-                            errorToast.show("Opencode: " + message);
+                            toast.show("Opencode: " + message, "error");
                         }
                     }
                     function onCache_cleared(provider) {
@@ -479,9 +479,9 @@ Kirigami.Page {
                                 onClicked: {
                                     var result = externalModels.select_model("gemini", 1, modelData);
                                     if (result !== "") {
-                                        errorToast.show(result);
+                                        toast.show(result, "error");
                                     } else {
-                                        successToast.show("Assigned to Council Slot 1");
+                                        toast.show("Assigned to Council Slot 1", "success");
                                     }
                                 }
                             }
@@ -491,9 +491,9 @@ Kirigami.Page {
                                 onClicked: {
                                     var result = externalModels.select_model("gemini", 2, modelData);
                                     if (result !== "") {
-                                        errorToast.show(result);
+                                        toast.show(result, "error");
                                     } else {
-                                        successToast.show("Assigned to Council Slot 2");
+                                        toast.show("Assigned to Council Slot 2", "success");
                                     }
                                 }
                             }
@@ -503,9 +503,9 @@ Kirigami.Page {
                                 onClicked: {
                                     var result = externalModels.select_model("gemini", 3, modelData);
                                     if (result !== "") {
-                                        errorToast.show(result);
+                                        toast.show(result, "error");
                                     } else {
-                                        successToast.show("Assigned to Council Slot 3");
+                                        toast.show("Assigned to Council Slot 3", "success");
                                     }
                                 }
                             }
@@ -518,12 +518,12 @@ Kirigami.Page {
                     function onModels_fetched(provider, ids) {
                         if (provider === "gemini") {
                             root.refreshList("gemini", searchGemini, enabledSwitchGemini, listGemini);
-                            successToast.show(ids.length + " Gemini models fetched");
+                            toast.show(ids.length + " Gemini models fetched", "success");
                         }
                     }
                     function onModels_error(provider, message) {
                         if (provider === "gemini") {
-                            errorToast.show("Gemini: " + message);
+                            toast.show("Gemini: " + message, "error");
                         }
                     }
                     function onCache_cleared(provider) {
@@ -599,9 +599,9 @@ Kirigami.Page {
                                 onClicked: {
                                     var result = externalModels.select_model("kilocode", 1, modelData);
                                     if (result !== "") {
-                                        errorToast.show(result);
+                                        toast.show(result, "error");
                                     } else {
-                                        successToast.show("Assigned to Council Slot 1");
+                                        toast.show("Assigned to Council Slot 1", "success");
                                     }
                                 }
                             }
@@ -611,9 +611,9 @@ Kirigami.Page {
                                 onClicked: {
                                     var result = externalModels.select_model("kilocode", 2, modelData);
                                     if (result !== "") {
-                                        errorToast.show(result);
+                                        toast.show(result, "error");
                                     } else {
-                                        successToast.show("Assigned to Council Slot 2");
+                                        toast.show("Assigned to Council Slot 2", "success");
                                     }
                                 }
                             }
@@ -623,9 +623,9 @@ Kirigami.Page {
                                 onClicked: {
                                     var result = externalModels.select_model("kilocode", 3, modelData);
                                     if (result !== "") {
-                                        errorToast.show(result);
+                                        toast.show(result, "error");
                                     } else {
-                                        successToast.show("Assigned to Council Slot 3");
+                                        toast.show("Assigned to Council Slot 3", "success");
                                     }
                                 }
                             }
@@ -638,12 +638,12 @@ Kirigami.Page {
                     function onModels_fetched(provider, ids) {
                         if (provider === "kilocode") {
                             root.refreshList("kilocode", searchKilocode, enabledSwitchKilocode, listKilocode);
-                            successToast.show(ids.length + " Kilocode models fetched");
+                            toast.show(ids.length + " Kilocode models fetched", "success");
                         }
                     }
                     function onModels_error(provider, message) {
                         if (provider === "kilocode") {
-                            errorToast.show("Kilocode: " + message);
+                            toast.show("Kilocode: " + message, "error");
                         }
                     }
                     function onCache_cleared(provider) {
@@ -657,12 +657,8 @@ Kirigami.Page {
     }
 
     // ── Toast notifications ──
-    ErrorToast {
-        id: errorToast
-        anchors.fill: parent
-    }
-    SuccessToast {
-        id: successToast
+    Toast {
+        id: toast
         anchors.fill: parent
     }
 }
