@@ -1119,7 +1119,10 @@ Kirigami.Page {
         xhr.send()
     }
 
-    function compactContext() {
+    function compactContext(onDone) {
+        // Optional onDone() runs once compaction finishes (success, failure, or
+        // timeout) so callers can chain a follow-up such as auto-compaction
+        // before a send.
         // Guard the summary payload so it can't exceed the model's context
         // window — the very situation we're compacting to avoid. Keep the most
         // recent messages that fit a conservative char budget derived from the
@@ -1168,6 +1171,7 @@ Kirigami.Page {
         xhr.ontimeout = function() {
             console.error("compactContext timed out")
             toast.show("Context compaction failed: timeout", "error")
+            if (onDone) onDone()
         }
         xhr.onreadystatechange = function() {
             if (xhr.readyState === 4) {
@@ -1180,9 +1184,11 @@ Kirigami.Page {
                     memoryManager.clear_short_term()
                     memoryManager.add_message("system", "[Compacted context] " + summary)
                     toast.show("Context compacted" + (trimmed ? " (oldest messages dropped to fit)" : ""), "success")
+                    if (onDone) onDone()
                 } else {
                     console.error("Compact failed: server returned " + xhr.status)
                     toast.show("Context compaction failed: server returned " + xhr.status, "error")
+                    if (onDone) onDone()
                 }
             }
         }
@@ -1232,10 +1238,63 @@ Kirigami.Page {
         return newMessages
     }
 
+    // Rough token estimate for a messages array. Deliberately conservative
+    // (~3 chars/token) so we err toward trimming a little more rather than
+    // overflowing the model's context window.
+    function estimateTokens(messagesArray) {
+        var chars = 0
+        for (var i = 0; i < messagesArray.length; i++) {
+            var c = messagesArray[i].content
+            chars += (typeof c === "string" ? c.length : JSON.stringify(c).length)
+            chars += 4  // per-message role/formatting overhead
+        }
+        return Math.ceil(chars / 3)
+    }
+
+    // Hard safety net: drop the oldest conversation messages until the request
+    // fits the context window (reserving room for the model's output). The
+    // consolidated system prompt at index 0 and the final (current) message are
+    // always kept. Returns the number of messages dropped.
+    function trimMessagesToFit(messagesArray) {
+        var reserveOutput = chatPage.genMaxTokens > 0 ? chatPage.genMaxTokens : 512
+        var budget = Math.max(512, chatPage.contextMax - reserveOutput - 256)
+        var startIdx = (messagesArray.length > 0 && messagesArray[0].role === "system") ? 1 : 0
+        var dropped = 0
+        while (estimateTokens(messagesArray) > budget && messagesArray.length > startIdx + 1) {
+            messagesArray.splice(startIdx, 1)
+            dropped++
+        }
+        return dropped
+    }
+
     function sendMessage() {
         var text = inputField.text.trim()
         if (text.length === 0 || isGenerating) return
 
+        // Auto-compaction: when we're near the context limit, summarize the
+        // prior conversation first so older turns survive as a summary rather
+        // than being hard-trimmed below. Skipped for Council mode and for
+        // !image / !video commands. Compaction is async, so the turn resumes in
+        // its completion callback.
+        if (root.serverRunning
+                && chatPage.contextPercent >= 85
+                && modeSelector.currentIndex !== 3
+                && !/^!/.test(text)
+                && messageHistory.length > 1) {
+            streamingText.text = "Context nearly full — compacting…"
+            isGenerating = true
+            compactContext(function() {
+                isGenerating = false
+                chatPage.dispatchMessage(text)
+            })
+            inputField.text = ""
+            return
+        }
+
+        dispatchMessage(text)
+    }
+
+    function dispatchMessage(text) {
         var userMsg = {"role": "user", "content": text}
         messageHistory.push(userMsg)
         messageHistoryChanged()
@@ -1322,7 +1381,14 @@ Kirigami.Page {
         messages = messages.concat(history)
         messages = consolidateSystemMessages(messages)
 
-        
+        // Final safety net: guarantee the request fits the context window even
+        // if auto-compaction didn't run (e.g. the server just started so usage
+        // is unknown) or a single turn is oversized.
+        var droppedForFit = trimMessagesToFit(messages)
+        if (droppedForFit > 0) {
+            console.warn("dispatchMessage: trimmed " + droppedForFit + " oldest message(s) to fit context window")
+            toast.show("Trimmed " + droppedForFit + " old message(s) to fit the context window", "info")
+        }
 
         chatPage.activeGenerationMode = 0
         // Clear any leftover text (e.g. "ERROR: ...") so the first chunk replaces it cleanly.
