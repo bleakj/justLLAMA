@@ -80,15 +80,13 @@ class MemoryManager(QObject):
     def get_system_prompt_addition(self) -> str:
         """Build a context addition for the system prompt.
 
-        Combines short-term history summary with relevant long-term
-        memories.
+        Returns relevant long-term memories only. Short-term history is
+        intentionally NOT included here: callers already send the full
+        short-term conversation as real chat messages (via
+        get_short_term_history), so embedding it again as text would duplicate
+        the entire conversation in every request.
         """
         parts = []
-
-        # Short-term context
-        history = self._short_term.format_for_prompt()
-        if history:
-            parts.append(f"Recent conversation:\n{history}")
 
         # Long-term context from recent interactions
         if self._enabled:

@@ -13,6 +13,10 @@ Kirigami.Page {
     property int contextUsed: 0
     property int contextMax: appSettings ? appSettings.get_int("server/ctx_size") : 32768
     property real contextPercent: contextMax > 0 ? (contextUsed / contextMax) * 100 : 0
+    // True after a local context reset (compact / clear) until the next
+    // generation. While set, the /slots poll must NOT overwrite our reset
+    // display with the server's still-stale KV-cache token count.
+    property bool contextResetPending: false
     // Generation parameters
     property real genTemperature: 0.7
     property real genTopP: 0.9
@@ -51,6 +55,7 @@ Kirigami.Page {
     readonly property color safeBgColor: Kirigami.Theme.backgroundColor || Qt.rgba(0.15, 0.15, 0.15, 1)
     readonly property color safeAltBgColor: Kirigami.Theme.alternateBackgroundColor || Qt.rgba(0.2, 0.2, 0.2, 1)
     readonly property color safeDisabledColor: Kirigami.Theme.disabledTextColor || Qt.rgba(0.5, 0.5, 0.5, 1)
+    readonly property color safeHighlightTextColor: Kirigami.Theme.highlightedTextColor || Qt.rgba(1, 1, 1, 1)
     // Poll context usage when server is running
     Timer {
         id: contextPollTimer
@@ -113,7 +118,7 @@ Kirigami.Page {
         function onError(msg) {
             isGenerating = false
             streamingText.text = "ERROR: " + msg
-            errorToast.show("Council error: " + msg)
+            toast.show("Council error: " + msg, "error")
         }
     }
 
@@ -132,7 +137,7 @@ Kirigami.Page {
         function onError(msg) {
             isGenerating = false
             streamingText.text = "ERROR: " + msg
-            errorToast.show("Image generation error: " + msg)
+            toast.show("Image generation error: " + msg, "error")
         }
     }
 
@@ -151,7 +156,7 @@ Kirigami.Page {
         function onError(msg) {
             isGenerating = false
             streamingText.text = "ERROR: " + msg
-            errorToast.show("Video generation error: " + msg)
+            toast.show("Video generation error: " + msg, "error")
         }
     }
 
@@ -172,7 +177,7 @@ Kirigami.Page {
             }
         }
         function onError_occurred(error) {
-            errorToast.show(error)
+            toast.show(error, "error")
         }
     }
     Connections {
@@ -229,7 +234,7 @@ Kirigami.Page {
         function onError_occurred(msg) {
             isGenerating = false
             streamingText.text = "ERROR: " + msg
-            errorToast.show("Generation error: " + msg)
+            toast.show("Generation error: " + msg, "error")
             var errorMsg = {"role": "assistant", "content": "ERROR: " + msg}
             messageHistory.push(errorMsg)
             messageHistoryChanged()
@@ -259,7 +264,7 @@ Kirigami.Page {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                color: "#1e1e1e"
+                color: chatPage.safeBgColor
                 border.color: chatPage.modeAccentColor
                 border.width: 1
                 radius: Kirigami.Units.cornerRadius
@@ -276,101 +281,126 @@ Kirigami.Page {
                         spacing: 4
                         Layout.margins: 4
 
-                        RowLayout {
+                        // Message bubble tile
+                        Rectangle {
+                            id: bubble
                             Layout.fillWidth: true
-                            Label {
-                                text: modelData.role === "user" ? "user>"
-                                    : modelData.role === "image" ? "justllama(image)>"
-                                    : modelData.role === "video" ? "justllama(video)>"
-                                    : "justllama>"
-                                font.family: "monospace"
-                                font.bold: true
-                                color: modelData.role === "user" ? "#00ff00" : "#00aaff"
-                            }
-                            Item { Layout.fillWidth: true }
-                        }
+                            implicitHeight: bubbleColumn.implicitHeight + Kirigami.Units.smallSpacing * 4
+                            radius: Kirigami.Units.cornerRadius
+                            color: modelData.role === "user" ? chatPage.safeHighlightColor : chatPage.safeAltBgColor
+                            border.color: modelData.role === "user" ? chatPage.safeHighlightColor : chatPage.safeBorderColor
+                            border.width: 1
 
-                        // Image messages display a preview
-                        Image {
-                            visible: modelData.role === "image"
-                            source: modelData.role === "image" ? "file://" + modelData.content : ""
-                            fillMode: Image.PreserveAspectFit
-                            Layout.maximumWidth: 400
-                            Layout.maximumHeight: 400
-                            Layout.fillWidth: true
-                        }
-
-                        // Video messages display an animated preview
-                        AnimatedImage {
-                            visible: modelData.role === "video"
-                            source: modelData.role === "video" ? "file://" + modelData.content : ""
-                            fillMode: Image.PreserveAspectFit
-                            Layout.maximumWidth: 400
-                            Layout.maximumHeight: 300
-                            Layout.fillWidth: true
-                            playing: true
-                        }
-
-                        // Thinking section
-                        ColumnLayout {
-                            visible: !!modelData.reasoning_content && modelData.reasoning_content.length > 0
-                            spacing: Kirigami.Units.smallSpacing
-                            Layout.fillWidth: true
-
-                            Button {
-                                id: reasoningToggle
-                                text: checked ? "▾ Hide Thinking" : "▸ Show Thinking"
-                                checkable: true
-                                checked: false
-                                flat: true
-                                font.family: "monospace"
-                                font.pointSize: 9
-                                icon.name: checked ? "go-down" : "go-next"
-                            }
-
+                            // Left accent bar
                             Rectangle {
-                                Layout.fillWidth: true
-                                Layout.leftMargin: Kirigami.Units.largeSpacing
-                                visible: reasoningToggle.checked
-                                color: "#2a2a2a"
-                                radius: Kirigami.Units.cornerRadius
-                                border.color: "#3e3e3e"
-                                border.width: 1
-                                implicitHeight: reasoningLabel.implicitHeight + Kirigami.Units.smallSpacing * 2
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: 4
+                                color: modelData.role === "user" ? Qt.rgba(1, 1, 1, 0.85) : chatPage.modeAccentColor
+                                radius: parent.radius
+                            }
+
+                            ColumnLayout {
+                                id: bubbleColumn
+                                anchors.fill: parent
+                                anchors.margins: Kirigami.Units.smallSpacing * 2
+                                spacing: Kirigami.Units.smallSpacing
+
+                                // Role header
+                                Label {
+                                    text: modelData.role === "user" ? "user>"
+                                        : modelData.role === "image" ? "justllama(image)>"
+                                        : modelData.role === "video" ? "justllama(video)>"
+                                        : "justllama>"
+                                    font.family: "monospace"
+                                    font.bold: true
+                                    color: modelData.role === "user" ? chatPage.safeHighlightTextColor : chatPage.safeTextColor
+                                }
+
+                                // Image messages display a preview
+                                Image {
+                                    visible: modelData.role === "image"
+                                    source: modelData.role === "image" ? "file://" + modelData.content : ""
+                                    fillMode: Image.PreserveAspectFit
+                                    Layout.maximumWidth: 400
+                                    Layout.maximumHeight: 400
+                                    Layout.fillWidth: true
+                                }
+
+                                // Video messages display an animated preview
+                                AnimatedImage {
+                                    visible: modelData.role === "video"
+                                    source: modelData.role === "video" ? "file://" + modelData.content : ""
+                                    fillMode: Image.PreserveAspectFit
+                                    Layout.maximumWidth: 400
+                                    Layout.maximumHeight: 300
+                                    Layout.fillWidth: true
+                                    playing: true
+                                }
+
+                                // Thinking section
+                                ColumnLayout {
+                                    visible: !!modelData.reasoning_content && modelData.reasoning_content.length > 0
+                                    spacing: Kirigami.Units.smallSpacing
+                                    Layout.fillWidth: true
+
+                                    Button {
+                                        id: reasoningToggle
+                                        text: checked ? "▾ Hide Thinking" : "▸ Show Thinking"
+                                        checkable: true
+                                        checked: false
+                                        flat: true
+                                        font.family: "monospace"
+                                        font.pointSize: 9
+                                        icon.name: checked ? "go-down" : "go-next"
+                                    }
+
+                                    Rectangle {
+                                        Layout.fillWidth: true
+                                        Layout.leftMargin: Kirigami.Units.largeSpacing
+                                        visible: reasoningToggle.checked
+                                        color: chatPage.safeAltBgColor
+                                        radius: Kirigami.Units.cornerRadius
+                                        border.color: chatPage.safeBorderColor
+                                        border.width: 1
+                                        implicitHeight: reasoningLabel.implicitHeight + Kirigami.Units.smallSpacing * 2
+
+                                        Label {
+                                            id: reasoningLabel
+                                            anchors.fill: parent
+                                            anchors.margins: Kirigami.Units.smallSpacing
+                                            text: modelData.reasoning_content || ""
+                                            wrapMode: Text.Wrap
+                                            font.family: "monospace"
+                                            font.italic: true
+                                            color: chatPage.safeDisabledColor
+                                        }
+                                    }
+                                }
 
                                 Label {
-                                    id: reasoningLabel
-                                    anchors.fill: parent
-                                    anchors.margins: Kirigami.Units.smallSpacing
-                                    text: modelData.reasoning_content || ""
+                                    text: modelData.content
+                                    visible: modelData.role !== "image" && modelData.role !== "video"
                                     wrapMode: Text.Wrap
+                                    Layout.fillWidth: true
                                     font.family: "monospace"
-                                    font.italic: true
-                                    color: "#888888"
+                                    color: modelData.role === "user" ? chatPage.safeHighlightTextColor : chatPage.safeTextColor
+                                }
+
+                                RowLayout {
+                                    Layout.topMargin: Kirigami.Units.smallSpacing
+                                    Button {
+                                        text: "Copy"
+                                        flat: true
+                                        icon.name: "edit-copy"
+                                        font.family: "monospace"
+                                        font.pointSize: 9
+                                        onClicked: chatPage.copyMessage(modelData.content)
+                                    }
+                                    Item { Layout.fillWidth: true }
                                 }
                             }
-                        }
-
-                        Label {
-                            text: modelData.content
-                            visible: modelData.role !== "image" && modelData.role !== "video"
-                            wrapMode: Text.Wrap
-                            Layout.fillWidth: true
-                            font.family: "monospace"
-                            color: "#ffffff"
-                        }
-
-                        RowLayout {
-                            Layout.topMargin: Kirigami.Units.smallSpacing
-                            Button {
-                                text: "Copy"
-                                flat: true
-                                icon.name: "edit-copy"
-                                font.family: "monospace"
-                                font.pointSize: 9
-                                onClicked: chatPage.copyMessage(modelData.content)
-                            }
-                            Item { Layout.fillWidth: true }
                         }
                     }
 
@@ -525,7 +555,7 @@ Kirigami.Page {
                 Layout.fillWidth: true
                 Layout.preferredHeight: streamingLayout.implicitHeight + Kirigami.Units.largeSpacing * 2
                 visible: isGenerating
-                color: "#1e1e1e"
+                color: chatPage.safeBgColor
                 border.color: chatPage.modeAccentColor
                 border.width: 1
                 radius: Kirigami.Units.cornerRadius
@@ -558,9 +588,9 @@ Kirigami.Page {
                             Layout.fillWidth: true
                             Layout.leftMargin: Kirigami.Units.largeSpacing
                             visible: streamingReasoningToggle.checked
-                            color: "#2a2a2a"
+                            color: chatPage.safeAltBgColor
                             radius: Kirigami.Units.cornerRadius
-                            border.color: "#3e3e3e"
+                            border.color: chatPage.safeBorderColor
                             border.width: 1
                             implicitHeight: streamingReasoningText.implicitHeight + Kirigami.Units.smallSpacing * 2
 
@@ -572,7 +602,7 @@ Kirigami.Page {
                                 wrapMode: Text.Wrap
                                 font.family: "monospace"
                                 font.italic: true
-                                color: "#888888"
+                                color: chatPage.safeDisabledColor
                             }
                         }
                     }
@@ -583,7 +613,7 @@ Kirigami.Page {
                         text: "Generating..."
                         wrapMode: Text.Wrap
                         font.family: "monospace"
-                        color: "#ffffff"
+                        color: chatPage.safeTextColor
                     }
                 }
             }
@@ -594,7 +624,7 @@ Kirigami.Page {
                 visible: chatPage.showTerminal
                 Layout.fillWidth: true
                 Layout.preferredHeight: 250
-                color: "#1e1e1e"
+                color: chatPage.safeBgColor
                 border.color: chatPage.modeAccentColor
                 border.width: 1
                 radius: Kirigami.Units.cornerRadius
@@ -608,7 +638,7 @@ Kirigami.Page {
                         Layout.fillWidth: true
                         Label {
                             text: "System Terminal (PTY)"
-                            color: "#ffffff"
+                            color: chatPage.safeTextColor
                             font.bold: true
                         }
                         Item { Layout.fillWidth: true }
@@ -630,7 +660,7 @@ Kirigami.Page {
                             readOnly: true
                             font.family: "monospace"
                             font.pointSize: 10
-                            color: "#00ff00"
+                            color: chatPage.safePositiveColor
                             background: null
                             wrapMode: TextEdit.WrapAnywhere
                             selectByMouse: true
@@ -686,107 +716,119 @@ Kirigami.Page {
                 }
             }
 
-            // Input area
-            RowLayout {
-                spacing: Kirigami.Units.smallSpacing
+            // Input area (grouped background)
+            Rectangle {
+                Layout.fillWidth: true
+                radius: Kirigami.Units.cornerRadius
+                color: chatPage.safeAltBgColor
+                border.color: chatPage.safeBorderColor
+                border.width: 1
+                implicitHeight: inputRowLayout.implicitHeight + Kirigami.Units.smallSpacing * 3
 
-                ComboBox {
-                    id: modeSelector
-                    model: ["Chat", "Plan", "Build", "Council"]
-                    enabled: !isGenerating
-                    Component.onCompleted: {
-                        var mode = appSettings.get_string("chat/mode")
-                        if (mode === "plan") currentIndex = 1
-                        else if (mode === "build") currentIndex = 2
-                        else if (mode === "council") currentIndex = 3
-                        else currentIndex = 0
-                    }
-                    onActivated: {
-                        var mode = "chat"
-                        if (currentIndex === 1) mode = "plan"
-                        else if (currentIndex === 2) mode = "build"
-                        else if (currentIndex === 3) mode = "council"
-                        appSettings.set_string("chat/mode", mode)
-                    }
-                }
+                RowLayout {
+                    id: inputRowLayout
+                    anchors.fill: parent
+                    anchors.margins: Kirigami.Units.smallSpacing * 2
+                    spacing: Kirigami.Units.smallSpacing * 2
 
-                TextField {
-                    id: inputField
-                    Layout.fillWidth: true
-                    placeholderText: {
-                        if (modeSelector.currentIndex === 1) return "Type a goal to plan..."
-                        if (modeSelector.currentIndex === 2) return "Type a step to build..."
-                        if (modeSelector.currentIndex === 3) return "Type a question for the council..."
-                        return "Type a message..."
-                    }
-                    enabled: !isGenerating
-                    onAccepted: sendMessage()
-                    Keys.onReturnPressed: sendMessage()
-                }
-
-                Button {
-                    id: micButton
-                    visible: appSettings.get_bool("chat/voice_input_enabled")
-                    enabled: !isGenerating
-
-                    icon.name: {
-                        if (voiceInputManager.recording) return "media-record"
-                        if (voiceInputManager.transcribing) return "process-working"
-                        return "audio-input-microphone"
+                    ComboBox {
+                        id: modeSelector
+                        model: ["Chat", "Plan", "Build", "Council"]
+                        enabled: !isGenerating
+                        Component.onCompleted: {
+                            var mode = appSettings.get_string("chat/mode")
+                            if (mode === "plan") currentIndex = 1
+                            else if (mode === "build") currentIndex = 2
+                            else if (mode === "council") currentIndex = 3
+                            else currentIndex = 0
+                        }
+                        onActivated: {
+                            var mode = "chat"
+                            if (currentIndex === 1) mode = "plan"
+                            else if (currentIndex === 2) mode = "build"
+                            else if (currentIndex === 3) mode = "council"
+                            appSettings.set_string("chat/mode", mode)
+                        }
                     }
 
-                    ToolTip.visible: hovered
-                    ToolTip.text: {
-                        if (voiceInputManager.recording) return "Stop recording and transcribe"
-                        if (voiceInputManager.transcribing) return "Transcribing..."
-                        return "Record voice input"
+                    TextField {
+                        id: inputField
+                        Layout.fillWidth: true
+                        placeholderText: {
+                            if (modeSelector.currentIndex === 1) return "Type a goal to plan..."
+                            if (modeSelector.currentIndex === 2) return "Type a step to build..."
+                            if (modeSelector.currentIndex === 3) return "Type a question for the council..."
+                            return "Type a message..."
+                        }
+                        enabled: !isGenerating
+                        onAccepted: sendMessage()
+                        Keys.onReturnPressed: sendMessage()
                     }
 
-                    property bool flashState: false
-                    Timer {
-                        id: flashTimer
-                        interval: 500
-                        running: voiceInputManager.recording
-                        repeat: true
-                        onTriggered: micButton.flashState = !micButton.flashState
-                    }
+                    Button {
+                        id: micButton
+                        visible: appSettings.get_bool("chat/voice_input_enabled")
+                        enabled: !isGenerating
 
-                    background: Rectangle {
-                        implicitWidth: Kirigami.Units.gridUnit * 2
-                        implicitHeight: Kirigami.Units.gridUnit * 2
-                        color: {
+                        icon.name: {
+                            if (voiceInputManager.recording) return "media-record"
+                            if (voiceInputManager.transcribing) return "process-working"
+                            return "audio-input-microphone"
+                        }
+
+                        ToolTip.visible: hovered
+                        ToolTip.text: {
+                            if (voiceInputManager.recording) return "Stop recording and transcribe"
+                            if (voiceInputManager.transcribing) return "Transcribing..."
+                            return "Record voice input"
+                        }
+
+                        property bool flashState: false
+                        Timer {
+                            id: flashTimer
+                            interval: 500
+                            running: voiceInputManager.recording
+                            repeat: true
+                            onTriggered: micButton.flashState = !micButton.flashState
+                        }
+
+                        background: Rectangle {
+                            implicitWidth: Kirigami.Units.gridUnit * 2
+                            implicitHeight: Kirigami.Units.gridUnit * 2
+                            color: {
+                                if (voiceInputManager.recording) {
+                                    return micButton.flashState ? Qt.rgba(1, 0, 0, 0.4) : Qt.rgba(1, 0, 0, 0.1)
+                                }
+                                if (voiceInputManager.transcribing) {
+                                    return Kirigami.Theme.disabledBackgroundColor
+                                }
+                                return micButton.hovered ? Kirigami.Theme.hoverColor : Kirigami.Theme.backgroundColor
+                            }
+                            border.color: {
+                                if (voiceInputManager.recording) return "red"
+                                if (voiceInputManager.transcribing) return safeBorderColor
+                                return micButton.visualFocus ? Kirigami.Theme.highlightColor : safeBorderColor
+                            }
+                            border.width: 1
+                            radius: Kirigami.Units.cornerRadius
+                        }
+
+                        onClicked: {
                             if (voiceInputManager.recording) {
-                                return micButton.flashState ? Qt.rgba(1, 0, 0, 0.4) : Qt.rgba(1, 0, 0, 0.1)
+                                voiceInputManager.stop_recording()
+                            } else if (!voiceInputManager.transcribing) {
+                                voiceInputManager.start_recording()
                             }
-                            if (voiceInputManager.transcribing) {
-                                return Kirigami.Theme.disabledBackgroundColor
-                            }
-                            return micButton.hovered ? Kirigami.Theme.hoverColor : Kirigami.Theme.backgroundColor
                         }
-                        border.color: {
-                            if (voiceInputManager.recording) return "red"
-                            if (voiceInputManager.transcribing) return safeBorderColor
-                            return micButton.visualFocus ? Kirigami.Theme.highlightColor : safeBorderColor
-                        }
-                        border.width: 1
-                        radius: Kirigami.Units.cornerRadius
                     }
 
-                    onClicked: {
-                        if (voiceInputManager.recording) {
-                            voiceInputManager.stop_recording()
-                        } else if (!voiceInputManager.transcribing) {
-                            voiceInputManager.start_recording()
+                    Button {
+                        text: isGenerating ? "⏹️ Stop" : "▶️ Send"
+                        enabled: inputField.text.length > 0 || isGenerating
+                        onClicked: {
+                            if (isGenerating) { stopGeneration() }
+                            else { sendMessage() }
                         }
-                    }
-                }
-
-                Button {
-                    text: isGenerating ? "⏹️ Stop" : "▶️ Send"
-                    enabled: inputField.text.length > 0 || isGenerating
-                    onClicked: {
-                        if (isGenerating) { stopGeneration() }
-                        else { sendMessage() }
                     }
                 }
             }
@@ -899,6 +941,7 @@ Kirigami.Page {
                     onClicked: {
                         chatPage.messageHistory = []
                         chatPage.contextUsed = 0
+                        chatPage.contextResetPending = true
                         memoryManager.clear_short_term()
                     }
                 }
@@ -963,7 +1006,7 @@ Kirigami.Page {
                                                     ops.splice(index, 1)
                                                     chatPage.pendingOperations = ops
                                                     chatPage.pendingOperationsChanged()
-                                                    errorToast.show("Build op applied: " + result)
+                                                    toast.show("Build op applied: " + result, "success")
                                                 }
                                             }
                                             Button {
@@ -993,7 +1036,7 @@ Kirigami.Page {
                                         }
                                         chatPage.pendingOperations = []
                                         chatPage.pendingOperationsChanged()
-                                        errorToast.show("Applied " + ops.length + " ops (" + results.filter(function(r) { return r === "OK" }).length + " OK)")
+                                        toast.show("Applied " + ops.length + " ops (" + results.filter(function(r) { return r === "OK" }).length + " OK)", "success")
                                     }
                                 }
                             }
@@ -1037,7 +1080,7 @@ Kirigami.Page {
         xhr.timeout = 10000
         xhr.ontimeout = function() {
             console.warn("fetchContextUsage timed out")
-            errorToast.show("Failed to fetch context usage: timeout")
+            toast.show("Failed to fetch context usage: timeout", "error")
         }
         xhr.onreadystatechange = function() {
             if (xhr.readyState === 4 && xhr.status === 200) {
@@ -1061,7 +1104,9 @@ Kirigami.Page {
                         } else if (slots.length > 0) {
                             max = slots[0].n_ctx || 0
                         }
-                        chatPage.contextUsed = used
+                        if (!chatPage.contextResetPending) {
+                            chatPage.contextUsed = used
+                        }
                         if (max > 0) {
                             chatPage.contextMax = max
                         }
@@ -1075,10 +1120,45 @@ Kirigami.Page {
     }
 
     function compactContext() {
+        // Guard the summary payload so it can't exceed the model's context
+        // window — the very situation we're compacting to avoid. Keep the most
+        // recent messages that fit a conservative char budget derived from the
+        // context size, dropping the oldest ones if necessary.
+        var maxTokens = chatPage.contextMax > 0 ? chatPage.contextMax : 4096
+        var summaryOutputTokens = 1024
+        var overheadTokens = 256
+        var usableTokens = Math.max(512, maxTokens - summaryOutputTokens - overheadTokens)
+        var charBudget = usableTokens * 3  // conservative ~3 chars/token
+
+        // Summarize the model's ACTUAL context (short-term memory), not the
+        // UI transcript. The two diverge: tool calls/results and multi-turn
+        // assistant messages live in short-term memory, while image/video
+        // entries live only in the UI list. Fall back to the UI list if
+        // short-term memory is unavailable or empty.
+        var historyForSummary
+        try {
+            historyForSummary = JSON.parse(memoryManager.get_short_term_history(-1))
+        } catch (e) {
+            historyForSummary = messageHistory.slice()
+        }
+        if (!historyForSummary || historyForSummary.length === 0) {
+            historyForSummary = messageHistory.slice()
+        }
+        var serialized = JSON.stringify(historyForSummary)
+        var trimmed = false
+        while (serialized.length > charBudget && historyForSummary.length > 1) {
+            historyForSummary.shift()  // drop the oldest message
+            serialized = JSON.stringify(historyForSummary)
+            trimmed = true
+        }
+        if (trimmed) {
+            console.warn("compactContext: history exceeded budget; dropped oldest messages before summarizing")
+        }
+
         // Build a summary prompt asking the model to compact the conversation
         var summaryMessages = [
             {"role": "system", "content": "Summarize the following conversation concisely, preserving key facts, decisions, and context. Output ONLY the summary."},
-            {"role": "user", "content": JSON.stringify(messageHistory)}
+            {"role": "user", "content": serialized}
         ]
         var xhr = new XMLHttpRequest()
         var port = appSettings.get_int("server/port") || 8080
@@ -1087,7 +1167,7 @@ Kirigami.Page {
         xhr.timeout = 30000
         xhr.ontimeout = function() {
             console.error("compactContext timed out")
-            errorToast.show("Context compaction failed: timeout")
+            toast.show("Context compaction failed: timeout", "error")
         }
         xhr.onreadystatechange = function() {
             if (xhr.readyState === 4) {
@@ -1096,11 +1176,13 @@ Kirigami.Page {
                     var summary = resp.choices[0].message.content || resp.choices[0].message.reasoning_content || ""
                     chatPage.messageHistory = [{"role": "system", "content": "[Compacted context] " + summary}]
                     chatPage.contextUsed = 0
+                    chatPage.contextResetPending = true
                     memoryManager.clear_short_term()
                     memoryManager.add_message("system", "[Compacted context] " + summary)
+                    toast.show("Context compacted" + (trimmed ? " (oldest messages dropped to fit)" : ""), "success")
                 } else {
                     console.error("Compact failed: server returned " + xhr.status)
-                    errorToast.show("Context compaction failed: server returned " + xhr.status)
+                    toast.show("Context compaction failed: server returned " + xhr.status, "error")
                 }
             }
         }
@@ -1162,6 +1244,9 @@ Kirigami.Page {
 
         inputField.text = ""
         isGenerating = true
+        // A new turn will repopulate the server's KV cache, so let the poll
+        // reflect real usage again.
+        chatPage.contextResetPending = false
 
         // ── Image generation command ──
         var imageMatch = text.match(/^!(?:image|imagine)\s+(.+)/i)
@@ -1203,7 +1288,7 @@ Kirigami.Page {
                         ragIndicator.visible = true
                     }
                 } catch (e) {
-                    errorToast.show("RAG search failed: " + e.message)
+                    toast.show("RAG search failed: " + e.message, "error")
                 }
             }
         }
@@ -1279,7 +1364,7 @@ Kirigami.Page {
             memoryIndicator.indicatorText = s.short_term_count + " short, " + s.long_term_count + " long"
         } catch (e) {
             memoryIndicator.indicatorText = ""
-            errorToast.show("Failed to refresh memory stats: " + e.message)
+            toast.show("Failed to refresh memory stats: " + e.message, "error")
         }
     }
 
@@ -1295,7 +1380,7 @@ Kirigami.Page {
         hiddenCopyField.text = text
         hiddenCopyField.selectAll()
         hiddenCopyField.copy()
-        errorToast.show("Copied!")
+        toast.show("Copied!", "success")
     }
     TextField {
         id: hiddenCopyField
@@ -1303,8 +1388,8 @@ Kirigami.Page {
         width: 0
         height: 0
     }
-    ErrorToast {
-        id: errorToast
+    Toast {
+        id: toast
         anchors.fill: parent
     }
 }
