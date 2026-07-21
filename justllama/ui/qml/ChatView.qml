@@ -1253,7 +1253,8 @@ Kirigami.Page {
             "top_p": chatPage.genTopP,
             "top_k": chatPage.genTopK,
             "repeat_penalty": chatPage.genRepeatPenalty,
-            "max_tokens": chatPage.genMaxTokens
+            "max_tokens": chatPage.genMaxTokens,
+            "mode": modeSelector.currentIndex
         }
         chatManager.send_message(messages, params)
     }

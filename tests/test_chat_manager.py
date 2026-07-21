@@ -88,6 +88,76 @@ def test_chat_runner_standard(qapp, monkeypatch):
     assert call_kwargs["repeat_penalty"] == 1.1
 
 
+
+def test_chat_runner_plan_mode_no_tools(qapp, monkeypatch):
+    """Test ChatRunner in Plan Mode passes tools=None.
+
+    When mode=1 is set, tools must be None regardless of MCP or skills setup.
+    """
+    # Mock AppSettings
+    mock_settings = MagicMock()
+    mock_settings.get_int.return_value = 8080
+    monkeypatch.setattr("justllama.server.chat_manager.AppSettings", lambda: mock_settings)
+
+    # Mock LlamaClient
+    mock_client = MagicMock(spec=LlamaClient)
+    mock_client.props.return_value = {
+        "default_generation_settings": {"model": "test-model"}
+    }
+    monkeypatch.setattr("justllama.server.chat_manager.LlamaClient", lambda port: mock_client)
+
+    # Create a mock MCP manager that would normally return tools
+    mock_mcp = MagicMock()
+    mock_mcp.get_openai_tools.return_value = [
+        {"type": "function", "function": {"name": "test_tool"}}
+    ]
+
+    class StandardResponse:
+        def iter_lines(self):
+            yield b'data: {"choices": [{"delta": {"content": "Plan text"}}]}'
+            yield b'data: [DONE]'
+
+        def close(self):
+            pass
+
+    resp = StandardResponse()
+    captured_calls = []
+
+    def spy_chat_completion(*args, **kwargs):
+        kwargs_copy = dict(kwargs)
+        kwargs_copy["messages"] = list(kwargs["messages"])
+        captured_calls.append(kwargs_copy)
+        return resp
+
+    mock_client.chat_completion.side_effect = spy_chat_completion
+
+    messages = [{"role": "user", "content": "Plan this"}]
+    params = {"model": "test-model", "temperature": 0.5, "max_tokens": 100, "mode": 1}
+
+    runner = ChatRunner(messages, params, mcp_manager=mock_mcp)
+
+    chunks = []
+    completed = []
+    errors = []
+    runner.chunk_received.connect(chunks.append)
+    runner.generation_complete.connect(completed.append)
+    runner.error_occurred.connect(errors.append)
+
+    runner.run()
+
+    # Assertions
+    assert len(errors) == 0
+    assert chunks == ["Plan text"]
+    assert len(completed) == 1
+
+    # Verify LlamaClient was called with tools=None
+    assert len(captured_calls) == 1
+    call_kwargs = captured_calls[0]
+    assert call_kwargs["tools"] is None
+    # Verify the mode was passed through
+    assert call_kwargs["messages"] == [{"role": "user", "content": "Plan this"}]
+    assert call_kwargs["model"] == "test-model"
+
 def test_chat_runner_tool_calling(qapp, monkeypatch):
     """Test ChatRunner executing tools and feeding the results back.
 

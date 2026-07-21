@@ -106,14 +106,16 @@ def test_get_model_missing(browser):
 
 def test_set_directory(browser, tmp_path):
     """Changing the directory changes what scan() finds."""
+    dir_empty = tmp_path / "empty"
     dir_a = tmp_path / "a"
     dir_b = tmp_path / "b"
+    dir_empty.mkdir()
     dir_a.mkdir()
     dir_b.mkdir()
     _write_gguf(dir_a / "only_in_a.gguf")
     _write_gguf(dir_b / "only_in_b.gguf")
 
-    # Start points at tmp_path (no .gguf there)
+    browser.set_directory(str(dir_empty))
     assert browser.scan() == []
 
     browser.set_directory(str(dir_a))

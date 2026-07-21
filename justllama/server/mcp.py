@@ -2,11 +2,13 @@ import os
 import asyncio
 import json
 
+from pathlib import Path
 import threading
 import shlex
 from contextlib import AsyncExitStack
 from PySide6.QtCore import QObject, Signal, Slot
 from mcp import ClientSession, StdioServerParameters
+from mcp.types import Root, ListRootsResult
 from mcp.client.stdio import stdio_client
 from justllama.config.settings import AppSettings
 
@@ -56,6 +58,15 @@ class McpManager(QObject):
         if key in ("mcp/servers",):
             print(f"[MCP] Config changed: {key}={value}. Reconnecting...")
             self.connect_servers()
+
+    async def _list_roots_callback(self, context, **kwargs) -> ListRootsResult:
+        """Provide roots to MCP servers that request them (like filesystem)."""
+        models_dir = Path.home() / "Documents" / "models"
+        skills_dir = Path.home() / ".local" / "share" / "justllama" / "gemma-skills"
+        return ListRootsResult(roots=[
+            Root(uri=f"file://{models_dir}", name="Models"),
+            Root(uri=f"file://{skills_dir}", name="Gemma Skills")
+        ])
     async def _connect_servers_async(self):
         if self._lock is None:
             self._lock = asyncio.Lock()
@@ -123,6 +134,53 @@ class McpManager(QObject):
             except Exception as e:
                 print(f"[MCP] Failed to migrate managed_skills: {e}")
 
+            # Clean up broken curated skills from user settings
+            needs_save = False
+            valid_config_list = []
+            seen_cmds = set()
+            for item in config_list:
+                if isinstance(item, dict):
+                    cmd = item.get("command", "").strip()
+                    
+                    if "echo 'legit server'" in cmd:
+                        needs_save = True
+                        continue
+                    
+                    # Fix the gemma-skills package
+                    if "@google-gemma/gemma-skills" in cmd:
+                        item["command"] = "python -m justllama.server.gemma_skills_mcp"
+                        needs_save = True
+                        
+                    # Fix the placeholder or previously-migrated filesystem path
+                    if "@modelcontextprotocol/server-filesystem" in cmd:
+                        if "/path/to/expose" in cmd or str(Path.home()) in cmd:
+                            if "/home/dsb/Documents/models" not in cmd:
+                                item["command"] = "npx -y @modelcontextprotocol/server-filesystem /home/dsb/Documents/models"
+                                needs_save = True
+                                
+                    # Refresh cmd in case it was updated above
+                    cmd = item.get("command", "").strip()
+                    
+                    if cmd in seen_cmds:
+                        needs_save = True
+                        continue
+                    
+                    seen_cmds.add(cmd)
+                valid_config_list.append(item)
+            
+            if needs_save:
+                config_list = valid_config_list
+                settings.set_json_string("mcp/servers_config", json.dumps(config_list))
+                enabled_cmds = [
+                    item.get("command")
+                    for item in config_list
+                    if isinstance(item, dict)
+                    and item.get("enabled")
+                    and item.get("command", "").strip()
+                ]
+                settings.set_list("mcp/servers", enabled_cmds)
+                servers = enabled_cmds
+
             # Collect environment variables from the (possibly migrated) config.
             for item in config_list:
                 if isinstance(item, dict):
@@ -161,7 +219,7 @@ class McpManager(QObject):
                         transport = await stack.enter_async_context(stdio_client(server_params))
                         read, write = transport
 
-                        session = await stack.enter_async_context(ClientSession(read, write))
+                        session = await stack.enter_async_context(ClientSession(read, write, list_roots_callback=self._list_roots_callback))
                         await session.initialize()
                     except Exception:
                         await stack.aclose()

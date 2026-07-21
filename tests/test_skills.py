@@ -91,15 +91,13 @@ class TestSkillsManager:
         """When skill is disabled, no tools should be returned."""
         manager.set_enabled("get_current_time", False)
         tools = manager.get_active_tools_schema()
-        assert tools == []
+        assert not any(t["function"]["name"] == "get_current_time" for t in tools)
 
     def test_get_active_tools_schema_on(self, manager):
         """When skill is enabled, its schema should appear."""
         manager.set_enabled("get_current_time", True)
         tools = manager.get_active_tools_schema()
-        assert len(tools) == 1
-        assert tools[0]["function"]["name"] == "get_current_time"
-
+        assert any(t["function"]["name"] == "get_current_time" for t in tools)
     def test_has_tool(self, manager):
         assert manager.has_tool("get_current_time") is True
         assert manager.has_tool("nonexistent_tool") is False

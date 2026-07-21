@@ -49,12 +49,16 @@ def _scan_video_models() -> list[dict]:
     models: list[dict] = []
     if not _VIDEO_MODELS_DIR.is_dir():
         return models
-    for f in sorted(_VIDEO_MODELS_DIR.glob("*.gguf")):
+    for f in sorted(_VIDEO_MODELS_DIR.rglob("*.gguf")):
         stat = f.stat()
         arch = _detect_architecture(f.stem)
         badge = "[LTX]" if arch == "ltx" else "[WAN]"
+        rel_path = f.relative_to(_VIDEO_MODELS_DIR)
+        name = str(rel_path.parent / rel_path.stem) if rel_path.parent.name else rel_path.stem
+        if name.endswith(".gguf"):
+            name = name[:-5]
         models.append({
-            "name": f"{badge} {f.stem}",
+            "name": f"{badge} {name}",
             "path": str(f),
             "size_bytes": stat.st_size,
         })

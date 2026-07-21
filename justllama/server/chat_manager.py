@@ -55,18 +55,22 @@ class ChatRunner(QThread):
         while loop_count < max_loops and not self._is_stopped:
             loop_count += 1
             
-            # Fetch tools from MCP and native skills
-            tools = []
-            if self.mcp_manager:
-                mcp_tools = self.mcp_manager.get_openai_tools()
-                if mcp_tools:
-                    tools.extend(mcp_tools)
-            if self.skills_manager:
-                skill_tools = self.skills_manager.get_active_tools_schema()
-                if skill_tools:
-                    tools.extend(skill_tools)
-            if not tools:
+            # Fetch tools from MCP and native skills (excluded in Plan Mode)
+            mode = self.params.get("mode", 0)
+            if mode == 1:  # Plan Mode: no tools allowed
                 tools = None
+            else:
+                tools = []
+                if self.mcp_manager:
+                    mcp_tools = self.mcp_manager.get_openai_tools()
+                    if mcp_tools:
+                        tools.extend(mcp_tools)
+                if self.skills_manager:
+                    skill_tools = self.skills_manager.get_active_tools_schema()
+                    if skill_tools:
+                        tools.extend(skill_tools)
+                if not tools:
+                    tools = None
 
             # Prepare chat completion parameters
             model = self.params.get("model", "default")
@@ -84,8 +88,8 @@ class ChatRunner(QThread):
             # to generate so the user never gets a response from the wrong model.
             if model != "default" and ":" not in model:
                 try:
-                    server_props = client.props(timeout=2.0)
-                    loaded_model = server_props.get("default_generation_settings", {}).get("model", "")
+                    models_list = client.models(timeout=2.0)
+                    loaded_model = models_list[0].get("id", "") if models_list else ""
                     if model not in loaded_model:
                         self.error_occurred.emit(
                             f"Model mismatch: requested '{model}' but server is "

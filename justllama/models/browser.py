@@ -92,7 +92,7 @@ class ModelBrowser(QObject):
 
         seen = set()
         for pattern in ("*.gguf", "*.gguf.part*"):
-            for f in sorted(self._dir.glob(pattern)):
+            for f in sorted(self._dir.rglob(pattern)):
                 try:
                     resolved = f.resolve()
                     stat = f.stat()
@@ -102,8 +102,13 @@ class ModelBrowser(QObject):
                 # Skip mmproj files (multimodal projectors, not standalone models)
                 if f.name.startswith("mmproj"):
                     continue
+                # Use the relative path to distinguish models in subfolders
+                rel_path = f.relative_to(self._dir)
+                name = str(rel_path.parent / rel_path.stem) if rel_path.parent.name else rel_path.stem
+                if name.endswith(".gguf"):  # For .gguf.part* files
+                    name = name[:-5]
                 models.append(ModelInfo(
-                    name=f.stem,
+                    name=name,
                     path=str(f),
                     size_bytes=stat.st_size,
                     modified_time=stat.st_mtime,

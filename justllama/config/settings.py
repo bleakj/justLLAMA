@@ -136,7 +136,7 @@ class AppSettings(QObject):
             {
                 "id": "gemma-dev",
                 "name": "Gemma-Dev",
-                "command": "npx -y @google-gemma/gemma-skills --skill gemma-dev",
+                "command": "python -m justllama.server.gemma_skills_mcp",
                 "description": "Official Gemma technical blueprint and ecosystem knowledge"
             },
             {
@@ -148,7 +148,7 @@ class AppSettings(QObject):
             {
                 "id": "filesystem",
                 "name": "Local Filesystem",
-                "command": "npx -y @modelcontextprotocol/server-filesystem /path/to/expose",
+                "command": "npx -y @modelcontextprotocol/server-filesystem /home/dsb/Documents/models",
                 "description": "Read and write to local directories"
             }
         ]
