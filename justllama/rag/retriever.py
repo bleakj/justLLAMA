@@ -87,6 +87,11 @@ class Retriever(QObject):
         package isn't installed so keyword search still produces hits.
         """
         if not self._bm25_corpus:
+            # Cold start: nothing was ingested this session but the vector
+            # store may already hold chunks (e.g. a DB from a previous run).
+            # Pull them so keyword fallback works over the same documents.
+            self._sync_corpus_from_store()
+        if not self._bm25_corpus:
             return []
 
         if self._bm25_index is None:
@@ -148,6 +153,40 @@ class Retriever(QObject):
         """
         self._bm25_corpus = chunks
         self._bm25_index = None  # invalidate cache
+
+    def add_chunks(self, chunks: list[dict]) -> None:
+        """Append already-parsed chunks to the BM25 corpus.
+
+        Called by the vector store as documents are ingested so the keyword
+        fallback index stays in sync with the embeddings.
+        """
+        for chunk in chunks:
+            if isinstance(chunk, dict) and isinstance(chunk.get("text"), str):
+                self._bm25_corpus.append(chunk)
+        self._bm25_index = None  # invalidate cache
+
+    def _sync_corpus_from_store(self) -> bool:
+        """Populate the BM25 corpus from the vector store's contents.
+
+        Cold-start fallback so keyword search works over a pre-existing vector
+        DB even when nothing was ingested this session. Only called when the
+        in-memory corpus is empty, so it never overwrites chunks added via
+        ``load_corpus`` / ``add_to_corpus`` / ``add_chunks``.
+        """
+        if self._vector_store is None:
+            return False
+        all_chunks = getattr(self._vector_store, "all_chunks", None)
+        if not callable(all_chunks):
+            return False
+        try:
+            chunks = json.loads(all_chunks())
+        except Exception:
+            return False
+        if chunks:
+            self._bm25_corpus = chunks
+            self._bm25_index = None  # invalidate cache
+            return True
+        return False
 
 
     @Slot(str, result=bool)

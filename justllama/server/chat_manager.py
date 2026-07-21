@@ -51,13 +51,21 @@ class ChatRunner(QThread):
 
         max_loops = 10
         loop_count = 0
+        finalized = False  # True once a terminal signal has been emitted
 
         while loop_count < max_loops and not self._is_stopped:
             loop_count += 1
-            
+
+            # On the final permitted iteration, disable tools so the model is
+            # forced to produce a text answer instead of requesting yet another
+            # tool call. Without this, exhausting the loop while a tool call is
+            # still pending would exit without ever emitting a completion
+            # signal, leaving the UI stuck in the "generating" state.
+            is_last_loop = loop_count >= max_loops
+
             # Fetch tools from MCP and native skills (excluded in Plan Mode)
             mode = self.params.get("mode", 0)
-            if mode == 1:  # Plan Mode: no tools allowed
+            if mode == 1 or is_last_loop:  # Plan Mode / final round: no tools
                 tools = None
             else:
                 tools = []
@@ -96,6 +104,7 @@ class ChatRunner(QThread):
                             f"currently running '{loaded_model}'. Stopping generation "
                             f"to avoid replying with the wrong model."
                         )
+                        finalized = True
                         break
                 except Exception:
                     # Server unreachable / no /props endpoint (e.g. cloud-routed).
@@ -243,7 +252,16 @@ class ChatRunner(QThread):
                     msg["reasoning_content"] = full_reasoning
                 self.messages.append(msg)
                 self.generation_complete.emit(self.messages)
+                finalized = True
                 break
+
+        # Safety net: the loop hit its iteration cap while a tool call was still
+        # pending (the model never produced a final answer). Emit a completion
+        # so the UI is released instead of hanging forever. The tool-less final
+        # round above normally prevents reaching this, but a misbehaving model
+        # could still return tool calls even when no tools were offered.
+        if not finalized and not self._is_stopped:
+            self.generation_complete.emit(self.messages)
 
 
 class ChatManager(QObject):

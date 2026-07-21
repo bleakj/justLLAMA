@@ -60,6 +60,7 @@ def main():
         chunk_overlap=settings.get_int("rag/chunk_overlap"),
     )
     retriever = Retriever(vector_store)
+    vector_store.set_retriever(retriever)  # keep BM25 fallback in sync with ingestion
 
     short_term = ShortTermMemory(max_size=settings.get_int("memory/max_short_term"))
     long_term = LongTermMemory(db_path=settings.get_string("memory/db_path"))

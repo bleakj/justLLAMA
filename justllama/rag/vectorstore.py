@@ -28,6 +28,12 @@ class VectorStore(QObject):
         self._chunk_overlap = chunk_overlap
         self._client = None
         self._collection = None
+        self._retriever = None
+
+    def set_retriever(self, retriever) -> None:
+        """Link a Retriever so its BM25 keyword index stays in sync with
+        ingestion. Optional — the store works without one."""
+        self._retriever = retriever
 
     def _ensure_client(self):
         """Lazy-init ChromaDB client and collection."""
@@ -92,6 +98,17 @@ class VectorStore(QObject):
             metadatas=metadatas,
         )
 
+        # Keep the retriever's keyword (BM25) fallback index in sync with the
+        # embeddings so hybrid search still works if a vector query fails.
+        if self._retriever is not None:
+            try:
+                self._retriever.add_chunks([
+                    {"text": documents[i], "metadata": metadatas[i]}
+                    for i in range(len(documents))
+                ])
+            except Exception:
+                pass
+
         count = self._collection.count()
         self.status_changed.emit(f"Vector store: {count} chunks total")
         return len(ids)
@@ -102,6 +119,10 @@ class VectorStore(QObject):
         try:
             self._ensure_client()
             self._collection.delete(where={"filename": filename})
+            # Drop the in-memory keyword corpus; it is rebuilt lazily from the
+            # (now-updated) store on the next fallback search.
+            if self._retriever is not None:
+                self._retriever.clear_corpus()
             return True
         except Exception as e:
             self.status_changed.emit(f"Failed to remove document: {e}")
@@ -177,6 +198,29 @@ class VectorStore(QObject):
 
         return json.dumps(output)
 
+    @Slot(result=str)
+    def all_chunks(self) -> str:
+        """Return every stored chunk as JSON — list of {"text", "metadata"}.
+
+        Used by the retriever to (re)build its keyword fallback index from the
+        authoritative store, e.g. for a vector DB that predates this session.
+        """
+        import json
+
+        try:
+            self._ensure_client()
+            data = self._collection.get(include=["documents", "metadatas"])
+        except Exception:
+            return "[]"
+
+        docs = data.get("documents") or []
+        metas = data.get("metadatas") or []
+        chunks = []
+        for i, text in enumerate(docs):
+            meta = metas[i] if i < len(metas) else {}
+            chunks.append({"text": text, "metadata": meta or {}})
+        return json.dumps(chunks)
+
     @Slot(result=int)
     def count(self) -> int:
         """Return total number of chunks in the store."""
@@ -208,6 +252,8 @@ class VectorStore(QObject):
                 pass
             self._collection = new_collection
             self.status_changed.emit("Vector store cleared")
+            if self._retriever is not None:
+                self._retriever.clear_corpus()
         except Exception as e:
             self.status_changed.emit(f"Clear failed: {e}")
 
