@@ -34,6 +34,10 @@ class McpManager(QObject):
         self._sessions = {}
         # mapping from tool_name -> client_session
         self._tool_to_session = {}
+        # cached OpenAI-schema tool list, rebuilt whenever servers (re)connect
+        # so get_openai_tools() is a cheap in-memory read rather than a live
+        # stdio round-trip to every server on each chat-loop iteration.
+        self._openai_tools_cache = []
 
         # Listen for setting changes. Keep the AppSettings instance alive in
         # self so it (and its settings_changed signal) is not garbage-collected.
@@ -61,7 +65,7 @@ class McpManager(QObject):
 
     async def _list_roots_callback(self, context, **kwargs) -> ListRootsResult:
         """Provide roots to MCP servers that request them (like filesystem)."""
-        models_dir = Path.home() / "Documents" / "models"
+        models_dir = Path(AppSettings().models_directory)
         skills_dir = Path.home() / ".local" / "share" / "justllama" / "gemma-skills"
         return ListRootsResult(roots=[
             Root(uri=f"file://{models_dir}", name="Models"),
@@ -154,8 +158,12 @@ class McpManager(QObject):
                     # Fix the placeholder or previously-migrated filesystem path
                     if "@modelcontextprotocol/server-filesystem" in cmd:
                         if "/path/to/expose" in cmd or str(Path.home()) in cmd:
-                            if "/home/dsb/Documents/models" not in cmd:
-                                item["command"] = "npx -y @modelcontextprotocol/server-filesystem /home/dsb/Documents/models"
+                            target = (
+                                "npx -y @modelcontextprotocol/server-filesystem "
+                                f"{settings.models_directory}"
+                            )
+                            if cmd != target:
+                                item["command"] = target
                                 needs_save = True
                                 
                     # Refresh cmd in case it was updated above
@@ -242,48 +250,29 @@ class McpManager(QObject):
                 print(f"[MCP] Error closing session for {server_str}: {e}")
         self._sessions.clear()
         self._tool_to_session.clear()
+        self._openai_tools_cache = []
 
     async def _rebuild_tool_mappings_async(self):
-        self._tool_to_session.clear()
+        """Rebuild the tool->session routing map and the cached OpenAI tool
+        schemas in one pass. Builds into locals first, then swaps atomically so
+        readers (get_openai_tools) never observe a half-built list.
+        """
+        new_tool_to_session = {}
+        new_openai_tools = []
         for server_str, (session, stack) in self._sessions.items():
             try:
                 tools_result = await session.list_tools()
                 tools = tools_result.tools if hasattr(tools_result, "tools") else tools_result
                 for tool in tools:
                     name = tool.name if hasattr(tool, "name") else tool.get("name")
-                    if name:
-                        self._tool_to_session[name] = session
-            except Exception as e:
-                print(f"[MCP] Failed to list tools for {server_str}: {e}")
-
-    @Slot(result=list)
-    def get_openai_tools(self) -> list:
-        """Fetch and format all tools from connected MCP servers into OpenAI function schema."""
-        future = asyncio.run_coroutine_threadsafe(self._get_openai_tools_async(), self._loop)
-        try:
-            return future.result(timeout=5)
-        except Exception as e:
-            print(f"[MCP] Error fetching OpenAI tools: {e}")
-            return []
-
-    async def _get_openai_tools_async(self) -> list:
-        # Re-fetch/verify tool mappings under the lock
-        if self._lock is None:
-            self._lock = asyncio.Lock()
-        
-        openai_tools = []
-        for server_str, (session, stack) in self._sessions.items():
-            try:
-                tools_result = await session.list_tools()
-                tools = tools_result.tools if hasattr(tools_result, "tools") else tools_result
-                for tool in tools:
-                    name = tool.name if hasattr(tool, "name") else tool.get("name")
+                    if not name:
+                        continue
+                    new_tool_to_session[name] = session
                     description = tool.description if hasattr(tool, "description") else tool.get("description", "")
                     input_schema = tool.inputSchema if hasattr(tool, "inputSchema") else tool.get("inputSchema", {})
                     if hasattr(input_schema, "model_dump"):
                         input_schema = input_schema.model_dump()
-                    
-                    openai_tools.append({
+                    new_openai_tools.append({
                         "type": "function",
                         "function": {
                             "name": name,
@@ -292,8 +281,19 @@ class McpManager(QObject):
                         }
                     })
             except Exception as e:
-                print(f"[MCP] Error reading tools for {server_str}: {e}")
-        return openai_tools
+                print(f"[MCP] Failed to list tools for {server_str}: {e}")
+        self._tool_to_session = new_tool_to_session
+        self._openai_tools_cache = new_openai_tools
+
+    @Slot(result=list)
+    def get_openai_tools(self) -> list:
+        """Return the cached OpenAI-schema tools from connected MCP servers.
+
+        The cache is rebuilt on every (re)connect via
+        _rebuild_tool_mappings_async, so this is an in-memory read and does
+        not perform any stdio round-trips.
+        """
+        return list(self._openai_tools_cache)
 
     @Slot(str, dict, result=str)
     def execute_tool(self, name: str, arguments: dict) -> str:

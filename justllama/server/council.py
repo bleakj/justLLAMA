@@ -102,9 +102,7 @@ class CouncilRunner(QThread):
                 local_server_stopped = True
                 time.sleep(1)  # Release TCP socket port buffer
             # Start server with target council model
-            ok = self.server_manager.start(
-                binary, model_path, port, ctx_size, n_gpu_layers, threads
-            )
+            ok = self.server_manager.start(binary, model_path, port)
             local_server_stopped = True
             if not ok:
                 self.progress_update.emit(f"Failed to start Council Model {i}. Skipping.")
@@ -172,9 +170,7 @@ class CouncilRunner(QThread):
         if local_server_stopped and main_model:
             main_name = Path(main_model).name
             self.progress_update.emit(f"Restoring main model: {main_name}...")
-            ok = self.server_manager.start(
-                binary, main_model, port, ctx_size, n_gpu_layers, threads
-            )
+            ok = self.server_manager.start(binary, main_model, port)
             if ok:
                 healthy = self._wait_for_health(port)
         self.progress_update.emit("Council queries complete. Synthesizing final response...")
@@ -245,10 +241,11 @@ class CouncilManager(QObject):
     @Slot(str)
     def start_council(self, prompt: str):
         """Start the background runner thread."""
-        if self._runner and self._runner.isRunning():
-            self._runner.terminate()
-            self._runner.wait()
-        
+        # Gracefully stop any in-flight run instead of hard-terminating the
+        # thread. QThread.terminate() can kill the worker mid server-swap and
+        # leave llama-server in an inconsistent (half-restarted) state.
+        self.stop()
+
         self._runner = CouncilRunner(prompt, self.settings, self.server_manager, self)
         self._runner.progress_update.connect(self.progress_update.emit)
         self._runner.synthesis_ready.connect(self.synthesis_ready.emit)

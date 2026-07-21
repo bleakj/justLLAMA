@@ -210,6 +210,23 @@ class LongTermMemory(QObject):
         ).fetchall()
         return [dict(row) for row in rows]
 
+    @Slot(int, result=str)
+    def list_recent(self, limit: int = 5) -> str:
+        """Return the most recently created memories as JSON.
+
+        Unlike ``search``, this does not run a full-text MATCH — it simply
+        returns the newest memories, which is what prompt augmentation wants
+        for "recent interactions" context.
+        """
+        self._ensure_conn()
+        import json
+        rows = self._conn.execute(
+            "SELECT id, content, category, created_at, accessed_at, access_count "
+            "FROM memories ORDER BY created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return json.dumps([dict(row) for row in rows])
+
     @Slot()
     def clear(self):
         """Delete all memories."""

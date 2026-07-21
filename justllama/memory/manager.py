@@ -92,7 +92,9 @@ class MemoryManager(QObject):
 
         # Long-term context from recent interactions
         if self._enabled:
-            recent = self._long_term.search("recent", 3)
+            # Pull the newest memories by recency (not an FTS match for the
+            # literal word "recent", which would almost always be empty).
+            recent = self._long_term.list_recent(3)
             memories = json.loads(recent)
             if memories:
                 mem_lines = [m["content"] for m in memories]

@@ -37,16 +37,22 @@ def mock_mcp(monkeypatch):
     """Mock stdio_client and ClientSession from the mcp package using monkeypatch."""
     created_sessions = []
     tools_pool = []
+    errors_pool = []
     
     # We use a side effect for ClientSession to create a fresh mock session
     # upon every invocation, and track all created sessions.
-    def create_session_context(read, write):
+    def create_session_context(read, write, **kwargs):
         session = MagicMock(name=f"ClientSession_{len(created_sessions)}")
         session.initialize = AsyncMock()
         
-        # Pop pre-configured tools from the pool for this session if available
-        tools = tools_pool.pop(0) if tools_pool else []
-        session.list_tools = AsyncMock(return_value=tools)
+        # A queued error makes this session raise on list_tools (simulates a
+        # server that connects but errors while enumerating tools). Otherwise
+        # pop pre-configured tools from the pool for this session if available.
+        if errors_pool:
+            session.list_tools = AsyncMock(side_effect=errors_pool.pop(0))
+        else:
+            tools = tools_pool.pop(0) if tools_pool else []
+            session.list_tools = AsyncMock(return_value=tools)
         session.call_tool = AsyncMock()
         
         created_sessions.append(session)
@@ -75,6 +81,7 @@ def mock_mcp(monkeypatch):
         "client_session": mock_client_session,
         "created_sessions": created_sessions,
         "tools_pool": tools_pool,
+        "errors_pool": errors_pool,
         "read": mock_read,
         "write": mock_write
     }
@@ -425,7 +432,8 @@ def test_execute_tool_unknown(settings, mock_mcp, monkeypatch):
 
 
 def test_get_openai_tools_error_handling(settings, mock_mcp, monkeypatch):
-    """Test that list_tools errors in get_openai_tools are caught and handled gracefully."""
+    """A server that errors while listing tools is handled gracefully: it
+    contributes no tools and get_openai_tools returns an empty list."""
     from justllama.server.mcp import McpManager
     
     event = threading.Event()
@@ -437,18 +445,15 @@ def test_get_openai_tools_error_handling(settings, mock_mcp, monkeypatch):
             event.set()
     monkeypatch.setattr(McpManager, "_connect_servers_async", wrapper)
     
-    mock_mcp["tools_pool"].append([
-        {"name": "tool1", "description": "Desc", "inputSchema": {}}
-    ])
+    # Queue an error so the (single) session raises during tool enumeration,
+    # which happens inside the connect -> _rebuild_tool_mappings_async pass.
+    mock_mcp["errors_pool"].append(Exception("Connection lost"))
     
     settings.set_list("mcp/servers", ["server1"])
     manager = McpManager()
     assert event.wait(timeout=2)
     
-    session = mock_mcp["created_sessions"][0]
-    session.list_tools.side_effect = Exception("Connection lost")
-    
-    # Should not raise exception, return empty list
+    # The failing server contributes nothing; the cached tool list is empty.
     openai_tools = manager.get_openai_tools()
     assert openai_tools == []
     

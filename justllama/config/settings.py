@@ -148,7 +148,7 @@ class AppSettings(QObject):
             {
                 "id": "filesystem",
                 "name": "Local Filesystem",
-                "command": "npx -y @modelcontextprotocol/server-filesystem /home/dsb/Documents/models",
+                "command": f"npx -y @modelcontextprotocol/server-filesystem {self.models_directory}",
                 "description": "Read and write to local directories"
             }
         ]
