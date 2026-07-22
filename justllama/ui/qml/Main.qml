@@ -17,7 +17,6 @@ Kirigami.ApplicationWindow {
 
     globalDrawer: Kirigami.GlobalDrawer {
         title: "justLLAMA"
-        isMenu: true
 
         actions: [
             Kirigami.Action {

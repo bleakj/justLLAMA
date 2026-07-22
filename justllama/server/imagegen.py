@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import time
 import urllib.request
 import uuid
@@ -366,6 +367,14 @@ class ImageGenManager(QObject):
             return None, "No generation has been started"
         self._runner.wait()
         return self._last_output, self._last_error
+    @Slot(str, str)
+    def copy_file(self, src: str, dest: str):
+        """Copy a generated image file to a user-chosen destination (Save As)."""
+        try:
+            shutil.copy2(src, dest)
+        except OSError as e:
+            self.error.emit(f"Failed to save image: {e}")
+
     @Slot(str)
     def select_model(self, path: str):
         """Persist the selected image model path."""

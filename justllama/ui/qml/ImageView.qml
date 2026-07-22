@@ -313,14 +313,11 @@ Kirigami.ScrollablePage {
         nameFilters: ["PNG Images (*.png)"]
         currentFile: previewPath.length > 0 ? "file://" + previewPath : ""
         onAccepted: {
-            var dest = selectedFile.toString()
-            if (dest.startsWith("file:///")) dest = dest.slice(8)
-            else if (dest.startsWith("file://")) dest = dest.slice(7)
-            dest = decodeURIComponent(dest)
-            // Copy file (simple approach: read source, write dest)
-            // QML can't copy files, so we use the backend
-            // For now just show the path
-            statusText = "Save path: " + dest
+            if (previewPath.length > 0) {
+                var src = previewPath.replace("file://", "")
+                imageGenManager.copy_file(src, selectedFile.toString().replace("file://", ""))
+                statusText = "Saved to: " + selectedFile.toString().replace("file://", "")
+            }
         }
     }
 
