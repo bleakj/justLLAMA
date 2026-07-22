@@ -26,8 +26,8 @@ class AppSettings(QObject):
             "server/binary": str(Path.home() / ".local" / "bin" / "llama-server-cuda"),
             "server/port": 8080,
             "server/model_path": "",
-            "server/ctx_size": 4096,
-            "server/n_gpu_layers": 99,
+            "server/ctx_size": 0,  # 0 = auto-detect from GGUF metadata
+            "server/n_gpu_layers": "auto",  # "auto" = let llama-server detect VRAM
             "server/threads": -1,
             "server/batch_size": 512,
             "server/flash_attn": True,
@@ -204,12 +204,19 @@ class AppSettings(QObject):
 
     def get_all_server_config(self) -> dict:
         """Return all server-related settings as a dict."""
+        # n_gpu_layers can be "auto" (string) or an integer
+        n_gpu_raw = self.get_string("server/n_gpu_layers")
+        try:
+            n_gpu_layers = int(n_gpu_raw)
+        except (ValueError, TypeError):
+            n_gpu_layers = n_gpu_raw if n_gpu_raw else "auto"
+
         return {
             "binary": self.get_string("server/binary"),
             "model_path": self.get_string("server/model_path"),
             "port": self.get_int("server/port"),
             "ctx_size": self.get_int("server/ctx_size"),
-            "n_gpu_layers": self.get_int("server/n_gpu_layers"),
+            "n_gpu_layers": n_gpu_layers,
             "threads": self.get_int("server/threads"),
             "batch_size": self.get_int("server/batch_size"),
             "ubatch_size": self.get_int("server/ubatch_size"),

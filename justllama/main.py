@@ -16,6 +16,7 @@ from justllama.server.updater import Updater
 from justllama.models.browser import ModelBrowser
 from justllama.models.downloader import ModelDownloader
 from justllama.models.profiles import ModelProfiles
+from justllama.models.metadata import GGUFMetadata
 from justllama.rag.vectorstore import VectorStore
 from justllama.rag.retriever import Retriever
 from justllama.memory.short_term import ShortTermMemory
@@ -70,6 +71,7 @@ def main():
     updater = Updater()
     council_manager = CouncilManager(settings, server_manager)
     model_profiles = ModelProfiles()
+    gguf_metadata = GGUFMetadata()
     build_manager = BuildManager()
     imagegen_manager = ImageGenManager(server_manager)
     videogen_manager = VideoGenManager(server_manager)
@@ -81,10 +83,22 @@ def main():
     chat_manager = ChatManager(mcp_manager, skills_manager)
 
     external_models = ExternalModelsManager(settings)
+
+    # Connect server lifecycle to context monitoring
+    def _on_server_started(port):
+        chat_manager.start_monitoring(port)
+
+    def _on_server_stopped():
+        chat_manager.stop_monitoring()
+
+    server_manager.server_started.connect(_on_server_started)
+    server_manager.server_stopped.connect(_on_server_stopped)
+
     # Ensure server is killed and resources released on app close.
     # Always run ``stop()`` (now a no-op-cleanup if the process is already
     # gone) so log-reader threads don't outlive the process.
     def _shutdown():
+        chat_manager.stop_monitoring()
         server_manager.stop()
         long_term.close()
         voice_input_manager.unload_model()
@@ -111,6 +125,7 @@ def main():
     ctx.setContextProperty("updater", updater)
     ctx.setContextProperty("councilManager", council_manager)
     ctx.setContextProperty("modelProfiles", model_profiles)
+    ctx.setContextProperty("ggufMetadata", gguf_metadata)
     ctx.setContextProperty("buildManager", build_manager)
     ctx.setContextProperty("imageGenManager", imagegen_manager)
     ctx.setContextProperty("videoGenManager", videogen_manager)

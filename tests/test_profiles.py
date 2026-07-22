@@ -314,5 +314,128 @@ class TestModelProfileConfig:
         assert eff["model_path"] == model_path
         assert eff["jinja"] is True
         assert eff["extra_args"] == ["--rope-scaling", "linear"]
-        assert eff["ctx_size"] == 4096
+        # ctx_size defaults to 8192 when auto-detection can't read GGUF metadata
+        assert eff["ctx_size"] == 8192
         assert eff["n_gpu_layers"] == "auto"
+
+
+# ---------------------------------------------------------------------------
+# _compute_safe_ngl() tests
+# ---------------------------------------------------------------------------
+
+class TestComputeSafeNgl:
+    """Tests for _compute_safe_ngl function."""
+
+    def test_moe_model_gets_conservative_ngl(self, tmp_path, monkeypatch):
+        """MoE models should get much lower NGL values."""
+        from justllama.models.profiles import _compute_safe_ngl
+        from justllama.models.metadata import _GGUF_MAGIC
+        import struct
+
+        # Create a mock MoE model (Mixtral architecture)
+        path = tmp_path / "mixtral.gguf"
+        metadata = {
+            "general.architecture": "mixtral",
+            "mixtral.block_count": 32,
+            "mixtral.expert_count": 8,
+        }
+        with open(path, "wb") as f:
+            f.write(struct.pack("<I", _GGUF_MAGIC))
+            f.write(struct.pack("<I", 3))  # version
+            f.write(struct.pack("<Q", 0))  # tensor count
+            f.write(struct.pack("<Q", len(metadata)))
+            for key, value in metadata.items():
+                key_bytes = key.encode("utf-8")
+                f.write(struct.pack("<Q", len(key_bytes)))
+                f.write(key_bytes)
+                if isinstance(value, int):
+                    f.write(struct.pack("<I", 11))
+                    f.write(struct.pack("<q", value))
+                elif isinstance(value, str):
+                    f.write(struct.pack("<I", 8))
+                    str_bytes = value.encode("utf-8")
+                    f.write(struct.pack("<Q", len(str_bytes)))
+                    f.write(str_bytes)
+
+        # Mock VRAM to 24GB (typical RTX 3090/4090)
+        monkeypatch.setattr("justllama.models.profiles._get_total_vram_gb", lambda: 24.0)
+        # Mock model size to 26GB (Mixtral 8x7B Q4)
+        monkeypatch.setattr("justllama.models.profiles._estimate_model_vram_gb", lambda p: 26.0)
+
+        safe_ngl = _compute_safe_ngl(str(path))
+        # MoE models should be capped at 24 or lower
+        assert safe_ngl <= 24
+        assert safe_ngl >= 1
+
+    def test_non_moe_model_with_enough_vram_gets_99(self, tmp_path, monkeypatch):
+        """Non-MoE models that fit in VRAM should get NGL=99."""
+        from justllama.models.profiles import _compute_safe_ngl
+        from justllama.models.metadata import _GGUF_MAGIC
+        import struct
+
+        # Create a mock non-MoE model
+        path = tmp_path / "llama.gguf"
+        metadata = {
+            "general.architecture": "llama",
+            "llama.block_count": 32,
+        }
+        with open(path, "wb") as f:
+            f.write(struct.pack("<I", _GGUF_MAGIC))
+            f.write(struct.pack("<I", 3))
+            f.write(struct.pack("<Q", 0))
+            f.write(struct.pack("<Q", len(metadata)))
+            for key, value in metadata.items():
+                key_bytes = key.encode("utf-8")
+                f.write(struct.pack("<Q", len(key_bytes)))
+                f.write(key_bytes)
+                if isinstance(value, int):
+                    f.write(struct.pack("<I", 11))
+                    f.write(struct.pack("<q", value))
+                elif isinstance(value, str):
+                    f.write(struct.pack("<I", 8))
+                    str_bytes = value.encode("utf-8")
+                    f.write(struct.pack("<Q", len(str_bytes)))
+                    f.write(str_bytes)
+
+        # Mock VRAM to 24GB, model size to 8GB (fits easily)
+        monkeypatch.setattr("justllama.models.profiles._get_total_vram_gb", lambda: 24.0)
+        monkeypatch.setattr("justllama.models.profiles._estimate_model_vram_gb", lambda p: 8.0)
+
+        safe_ngl = _compute_safe_ngl(str(path))
+        # Should offload all layers
+        assert safe_ngl == 99
+
+    def test_no_vram_info_returns_99(self, tmp_path, monkeypatch):
+        """When VRAM can't be determined, return 99 (let llama-server decide)."""
+        from justllama.models.profiles import _compute_safe_ngl
+        from justllama.models.metadata import _GGUF_MAGIC
+        import struct
+
+        path = tmp_path / "model.gguf"
+        metadata = {
+            "general.architecture": "llama",
+            "llama.block_count": 32,
+        }
+        with open(path, "wb") as f:
+            f.write(struct.pack("<I", _GGUF_MAGIC))
+            f.write(struct.pack("<I", 3))
+            f.write(struct.pack("<Q", 0))
+            f.write(struct.pack("<Q", len(metadata)))
+            for key, value in metadata.items():
+                key_bytes = key.encode("utf-8")
+                f.write(struct.pack("<Q", len(key_bytes)))
+                f.write(key_bytes)
+                if isinstance(value, int):
+                    f.write(struct.pack("<I", 11))
+                    f.write(struct.pack("<q", value))
+                elif isinstance(value, str):
+                    f.write(struct.pack("<I", 8))
+                    str_bytes = value.encode("utf-8")
+                    f.write(struct.pack("<Q", len(str_bytes)))
+                    f.write(str_bytes)
+
+        # Mock no VRAM info
+        monkeypatch.setattr("justllama.models.profiles._get_total_vram_gb", lambda: 0.0)
+
+        safe_ngl = _compute_safe_ngl(str(path))
+        assert safe_ngl == 99

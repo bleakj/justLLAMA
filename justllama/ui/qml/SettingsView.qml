@@ -129,25 +129,30 @@ Kirigami.ScrollablePage {
                     ComboBox {
                         id: ctxSizeCombo
                         property bool _ready: false
-                        model: ["8K (8192)", "16K (16384)", "32K (32768)", "64K (65536)", "128K (131072)", "200K (204800)"]
+                        model: ["Auto (from model)", "8K (8192)", "16K (16384)", "32K (32768)", "64K (65536)", "128K (131072)", "200K (204800)"]
                         currentIndex: {
                             var v = appSettings.get_int("server/ctx_size")
+                            if (v === 0) return 0  // Auto
                             var sizes = [8192, 16384, 32768, 65536, 131072, 204800]
                             var idx = sizes.indexOf(v)
-                            if (idx >= 0) return idx
+                            if (idx >= 0) return idx + 1  // +1 because index 0 is "Auto"
                             // Coerce to nearest predefined size
                             var closest = sizes[0], minDist = Math.abs(v - sizes[0])
                             for (var i = 1; i < sizes.length; i++) {
                                 var d = Math.abs(v - sizes[i])
                                 if (d < minDist) { minDist = d; closest = sizes[i] }
                             }
-                            return sizes.indexOf(closest)
+                            return sizes.indexOf(closest) + 1
                         }
                         Component.onCompleted: _ready = true
                         onCurrentIndexChanged: {
                             if (!_ready) return
-                            var sizes = [8192, 16384, 32768, 65536, 131072, 204800]
-                            appSettings.set_int("server/ctx_size", sizes[currentIndex])
+                            if (currentIndex === 0) {
+                                appSettings.set_int("server/ctx_size", 0)  // Auto
+                            } else {
+                                var sizes = [8192, 16384, 32768, 65536, 131072, 204800]
+                                appSettings.set_int("server/ctx_size", sizes[currentIndex - 1])
+                            }
                         }
                         Layout.fillWidth: true
                     }
@@ -156,10 +161,39 @@ Kirigami.ScrollablePage {
                 RowLayout {
                     Layout.fillWidth: true
                     Label { text: "GPU Layers:"; Layout.preferredWidth: 120 }
+                    ComboBox {
+                        id: nglCombo
+                        property bool _ready: false
+                        model: ["Auto (detect VRAM)", "0 (CPU only)", "Custom"]
+                        currentIndex: {
+                            var v = appSettings.get_string("server/n_gpu_layers")
+                            if (v === "auto" || v === "") return 0
+                            var n = parseInt(v)
+                            if (isNaN(n)) return 0
+                            if (n === 0) return 1
+                            return 2  // Custom
+                        }
+                        Component.onCompleted: _ready = true
+                        onCurrentIndexChanged: {
+                            if (!_ready) return
+                            if (currentIndex === 0) {
+                                appSettings.set_string("server/n_gpu_layers", "auto")
+                            } else if (currentIndex === 1) {
+                                appSettings.set_int("server/n_gpu_layers", 0)
+                            }
+                            // Custom is handled by nglSpin
+                        }
+                        Layout.fillWidth: true
+                    }
                     SpinBox {
-                        from: 0
+                        id: nglSpin
+                        visible: nglCombo.currentIndex === 2
+                        from: 1
                         to: 200
-                        value: appSettings.get_int("server/n_gpu_layers")
+                        value: {
+                            var v = appSettings.get_int("server/n_gpu_layers")
+                            return (v > 0) ? v : 99
+                        }
                         onValueModified: appSettings.set_int("server/n_gpu_layers", value)
                     }
                 }

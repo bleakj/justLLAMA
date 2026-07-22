@@ -142,6 +142,45 @@ class LlamaClient:
         resp.raise_for_status()
         data = resp.json().get("data", [])
         return [item["embedding"] for item in data]
+
+    def slots(self, timeout: float = 5) -> list[dict]:
+        """GET /slots — get slot information including token usage.
+
+        Returns list of slot dictionaries with keys like:
+        - id: slot ID
+        - n_ctx: total context size for this slot
+        - n_token_usage: number of tokens currently used
+        - is_processing: whether the slot is currently generating
+        """
+        try:
+            resp = self._session.get(self._url("/slots"), timeout=timeout)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception:
+            return []
+
+    def clear_kv_cache(self, slot_id: int = -1, timeout: float = 5) -> bool:
+        """PATCH /slots/{slot_id} — clear the KV cache for a slot.
+
+        Args:
+            slot_id: Slot ID to clear (-1 for all slots).
+            timeout: Request timeout in seconds.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        try:
+            # Use PATCH to update slot with action to erase cache
+            payload = {"action": "erase"}
+            resp = self._session.patch(
+                self._url(f"/slots/{slot_id}"),
+                json=payload,
+                timeout=timeout,
+            )
+            return resp.status_code == 200
+        except Exception:
+            return False
+
     def set_base_url(self, host: str, port: int):
         """Update the server base URL."""
         if not isinstance(port, int) or not (1024 <= port <= 65535):

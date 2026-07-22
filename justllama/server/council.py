@@ -48,8 +48,14 @@ class CouncilRunner(QThread):
         main_model = self.settings.get_string("server/model_path")
         binary = self.settings.get_string("server/binary")
         port = self.settings.get_int("server/port") or 8080
-        ctx_size = self.settings.get_int("server/ctx_size") or 4096
-        n_gpu_layers = self.settings.get_int("server/n_gpu_layers")
+        # ctx_size and n_gpu_layers may be "auto" or 0 for auto-detection
+        ctx_size = self.settings.get_int("server/ctx_size") or 0
+        # n_gpu_layers can be "auto" (string) or an integer
+        n_gpu_raw = self.settings.get_string("server/n_gpu_layers")
+        try:
+            n_gpu_layers = int(n_gpu_raw)
+        except (ValueError, TypeError):
+            n_gpu_layers = "auto"
         threads = self.settings.get_int("server/threads")
 
         responses = []

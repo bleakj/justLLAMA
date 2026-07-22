@@ -100,11 +100,20 @@ class TestValidatePort:
 # ---------------------------------------------------------------------------
 
 class TestValidateCtxSize:
-    @pytest.mark.parametrize("bad_size", [0, 1, 100, 255])
+    # ctx_size=0 is now valid (auto-detect from GGUF metadata)
+    @pytest.mark.parametrize("bad_size", [1, 100, 255])
     def test_ctx_size_too_small(self, bad_size):
         cfg = _valid_config(ctx_size=bad_size)
         errors = cfg.validate()
         assert any("Context size" in e for e in errors)
+
+    def test_ctx_size_zero_is_valid_auto(self):
+        """ctx_size=0 means auto-detect from GGUF metadata."""
+        cfg = _valid_config(ctx_size=0)
+        with patch("justllama.server.config.Path.is_file", return_value=True):
+            with patch("justllama.server.config.shutil.which", return_value="/usr/bin/llama-server"):
+                errors = cfg.validate()
+        assert not any("Context size" in e for e in errors)
 
     def test_ctx_size_exactly_256_is_valid(self):
         cfg = _valid_config(ctx_size=256)
@@ -297,15 +306,15 @@ class TestBuildCommandPerformanceKnobs:
         cmd = cfg.build_command()
         assert cmd[cmd.index("--model-draft") + 1] == "/fake/draft.gguf"
         assert cmd[cmd.index("--gpu-layers-draft") + 1] == "99"
-        assert cmd[cmd.index("--draft-max") + 1] == "16"
-        assert cmd[cmd.index("--draft-min") + 1] == "2"
+        assert cmd[cmd.index("--spec-draft-n-max") + 1] == "16"
+        assert cmd[cmd.index("--spec-draft-n-min") + 1] == "2"
 
     def test_draft_omitted_when_no_model(self):
         cfg = _valid_config(draft_max=16, draft_min=2)
         cmd = cfg.build_command()
         assert "--model-draft" not in cmd
         assert "--gpu-layers-draft" not in cmd
-        assert "--draft-max" not in cmd
+        assert "--spec-draft-n-max" not in cmd
 
 
 # ---------------------------------------------------------------------------

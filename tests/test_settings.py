@@ -239,10 +239,12 @@ class TestDefaults:
         assert fresh_settings.get_int("server/port") == 8080
 
     def test_default_ctx_size(self, fresh_settings):
-        assert fresh_settings.get_int("server/ctx_size") == 4096
+        # 0 = auto-detect from GGUF metadata
+        assert fresh_settings.get_int("server/ctx_size") == 0
 
     def test_default_n_gpu_layers(self, fresh_settings):
-        assert fresh_settings.get_int("server/n_gpu_layers") == 99
+        # "auto" = let llama-server detect VRAM
+        assert fresh_settings.get_string("server/n_gpu_layers") == "auto"
 
     def test_default_threads(self, fresh_settings):
         assert fresh_settings.get_int("server/threads") == -1

@@ -1,7 +1,68 @@
 import json
+import time
 from PySide6.QtCore import QObject, QThread, Signal, Slot
 from justllama.server.client import LlamaClient
 from justllama.config.settings import AppSettings
+
+
+class ContextMonitor(QThread):
+    """Background thread that monitors context token usage.
+
+    Polls the /slots endpoint periodically and emits signals when context
+    usage exceeds thresholds, enabling auto-compaction.
+    """
+
+    context_nearly_full = Signal(int, int)  # used_tokens, max_tokens
+    context_warning = Signal(int, int)  # used_tokens, max_tokens (at 60%)
+
+    def __init__(self, port: int = 8080, parent=None):
+        super().__init__(parent)
+        self._port = port
+        self._running = True
+        self._poll_interval = 5  # seconds
+        self._warning_threshold = 0.60  # 60% = warning
+        self._critical_threshold = 0.80  # 80% = auto-compact
+
+    def stop(self):
+        """Request the monitor to stop."""
+        self._running = False
+
+    def run(self):
+        client = LlamaClient(port=self._port)
+        warned = False
+
+        while self._running:
+            try:
+                slots = client.slots(timeout=2)
+                for slot in slots:
+                    if not slot.get("is_processing", False):
+                        continue
+
+                    n_ctx = slot.get("n_ctx", 0)
+                    n_used = slot.get("n_token_usage", 0)
+
+                    if n_ctx <= 0:
+                        continue
+
+                    usage_ratio = n_used / n_ctx
+
+                    if usage_ratio >= self._critical_threshold:
+                        self.context_nearly_full.emit(n_used, n_ctx)
+                        warned = True
+                    elif usage_ratio >= self._warning_threshold and not warned:
+                        self.context_warning.emit(n_used, n_ctx)
+                        warned = True
+                    elif usage_ratio < self._warning_threshold:
+                        warned = False
+
+            except Exception:
+                pass  # Server might be temporarily unavailable
+
+            # Sleep in small increments for responsive stopping
+            for _ in range(self._poll_interval * 10):
+                if not self._running:
+                    break
+                time.sleep(0.1)
 
 
 class ChatRunner(QThread):
@@ -265,19 +326,133 @@ class ChatRunner(QThread):
 
 
 class ChatManager(QObject):
-    """Manages chat completion requests and orchestrates ChatRunners."""
+    """Manages chat completion requests and orchestrates ChatRunners.
+
+    Also monitors context usage and can trigger auto-compaction when the
+    context window is nearly full.
+    """
 
     chunk_received = Signal(str)
     generation_complete = Signal(list)
     error_occurred = Signal(str)
     tool_call_detected = Signal(str, str)
     reasoning_chunk_received = Signal(str)
+    # Auto-compaction signals
+    context_nearly_full = Signal(int, int)  # used_tokens, max_tokens
+    context_warning = Signal(int, int)  # used_tokens, max_tokens (at 60%)
+    auto_compact_triggered = Signal()  # Emitted when auto-compaction starts
+    auto_compact_complete = Signal(str)  # Emitted with summary text after compaction
+    auto_compact_error = Signal(str)  # Emitted if auto-compaction fails
 
     def __init__(self, mcp_manager=None, skills_manager=None, parent=None):
         super().__init__(parent)
         self.mcp_manager = mcp_manager
         self.skills_manager = skills_manager
         self._runner = None
+        self._monitor = None
+        self._auto_compact_pending = False
+
+    def start_monitoring(self, port: int):
+        """Start the context usage monitor."""
+        self.stop_monitoring()
+        self._monitor = ContextMonitor(port=port, parent=self)
+        self._monitor.context_nearly_full.connect(self._on_context_critical)
+        self._monitor.context_warning.connect(self._on_context_warning)
+        self._monitor.start()
+
+    def stop_monitoring(self):
+        """Stop the context usage monitor."""
+        if self._monitor:
+            self._monitor.stop()
+            self._monitor.wait(2000)
+            self._monitor = None
+
+    def _on_context_warning(self, used: int, total: int):
+        """Handle context warning (60% full)."""
+        self.context_warning.emit(used, total)
+
+    def _on_context_critical(self, used: int, total: int):
+        """Handle critical context usage (80% full) - trigger auto-compaction."""
+        if not self._auto_compact_pending:
+            self._auto_compact_pending = True
+            self.context_nearly_full.emit(used, total)
+            self.auto_compact_triggered.emit()
+
+    @Slot()
+    def acknowledge_auto_compact(self):
+        """Called by QML after auto-compaction completes."""
+        self._auto_compact_pending = False
+
+    @Slot(list, str)
+    def auto_compact(self, messages: list, model_name: str):
+        """Summarize conversation to compact context, then clear KV cache.
+
+        This is the server-side auto-compaction method. It takes the current
+        conversation history, generates a concise summary via the model, then
+        clears the server's KV cache. The summary is emitted via the
+        auto_compact_complete signal so QML can update its message history.
+
+        Args:
+            messages: Current conversation message history.
+            model_name: Model name for the summary request.
+        """
+        if not messages or len(messages) < 2:
+            return
+
+        try:
+            settings = AppSettings()
+            port = settings.get_int("server/port") or 8080
+            client = LlamaClient(port=port)
+
+            # Build summary prompt from conversation history
+            # Keep messages compact: serialize to JSON string
+            history_text = json.dumps(messages, ensure_ascii=False)
+
+            # Trim if too large for a summary request (keep under ~6K chars)
+            if len(history_text) > 6000:
+                # Keep first system message + recent messages
+                trimmed = []
+                for msg in messages:
+                    if msg.get("role") == "system" and len(trimmed) == 0:
+                        trimmed.append(msg)
+                # Add last N messages that fit
+                recent = messages[-6:]
+                for msg in recent:
+                    if msg not in trimmed:
+                        trimmed.append(msg)
+                history_text = json.dumps(trimmed, ensure_ascii=False)
+
+            summary_messages = [
+                {"role": "system", "content": "Summarize the following conversation concisely, preserving key facts, decisions, and context. Output ONLY the summary."},
+                {"role": "user", "content": history_text}
+            ]
+
+            resp = client.chat_completion(
+                messages=summary_messages,
+                model=model_name,
+                temperature=0.3,
+                max_tokens=1024,
+                stream=False,
+                timeout=30
+            )
+
+            summary = ""
+            if isinstance(resp, dict):
+                choices = resp.get("choices", [])
+                if choices:
+                    summary = choices[0].get("message", {}).get("content", "")
+
+            if summary:
+                # Clear the server's KV cache
+                client.clear_kv_cache()
+                self.auto_compact_complete.emit(summary)
+                self._auto_compact_pending = False
+            else:
+                self.auto_compact_error.emit("Auto-compaction produced empty summary")
+
+        except Exception as e:
+            self.auto_compact_error.emit(f"Auto-compaction failed: {e}")
+            self._auto_compact_pending = False
 
     @Slot(list, dict)
     def send_message(self, messages: list, params: dict):

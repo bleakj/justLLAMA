@@ -63,8 +63,9 @@ class ServerConfig:
         if not (1024 <= self.port <= 65535):
             errors.append(f"Port must be 1024-65535, got {self.port}")
 
-        if self.ctx_size < 256:
-            errors.append(f"Context size must be >= 256, got {self.ctx_size}")
+        # ctx_size of 0 means auto-detect from GGUF metadata (handled by manager)
+        if self.ctx_size != 0 and self.ctx_size < 256:
+            errors.append(f"Context size must be >= 256 or 0 for auto, got {self.ctx_size}")
 
         return errors
 
@@ -98,6 +99,7 @@ class ServerConfig:
         elif fa_val:
             cmd.extend(["--flash-attn", fa_val])
 
+        # Enable Jinja by default for automatic chat template from GGUF
         if self.jinja:
             cmd.append("--jinja")
 
@@ -131,10 +133,10 @@ class ServerConfig:
             cmd.extend(["--gpu-layers-draft", str(_as_int(self.gpu_layers_draft, 99))])
             draft_max = _as_int(self.draft_max)
             if draft_max > 0:
-                cmd.extend(["--draft-max", str(draft_max)])
+                cmd.extend(["--spec-draft-n-max", str(draft_max)])
             draft_min = _as_int(self.draft_min)
             if draft_min > 0:
-                cmd.extend(["--draft-min", str(draft_min)])
+                cmd.extend(["--spec-draft-n-min", str(draft_min)])
 
         if isinstance(self.extra_args, str):
             cmd.extend(self.extra_args.split())

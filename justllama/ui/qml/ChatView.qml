@@ -239,6 +239,29 @@ Kirigami.Page {
             messageHistory.push(errorMsg)
             messageHistoryChanged()
         }
+        // Server-side auto-compaction signals
+        function onContext_warning(used, total) {
+            var pct = Math.round((used / total) * 100)
+            toast.show("Context at " + pct + "% — consider compacting soon", "info")
+        }
+        function onContext_nearly_full(used, total) {
+            // Server detected critical context usage (80%+)
+            // Trigger auto-compaction if not already in progress
+            if (!isGenerating && messageHistory.length > 1) {
+                streamingText.text = "Context critical — auto-compacting..."
+                isGenerating = true
+                compactContext(function() {
+                    isGenerating = false
+                    chatManager.acknowledge_auto_compact()
+                })
+            } else {
+                chatManager.acknowledge_auto_compact()
+            }
+        }
+        function onAuto_compact_triggered() {
+            // Acknowledge that we received the signal
+            // The actual compaction is handled by onContext_nearly_full
+        }
         function onTool_call_detected(name, args) {
             streamingText.text = "Running tool " + name + " with arguments: " + args + "...\n"
         }
@@ -964,6 +987,13 @@ Kirigami.Page {
                     }
                 }
 
+                Button {
+                    text: "⏏ Eject Model"
+                    Layout.fillWidth: true
+                    visible: root.serverRunning
+                    onClicked: ejectConfirmation.open()
+                }
+
                         // Pending Build Operations panel (visible only in Build mode)
                         Rectangle {
                             Layout.fillWidth: true
@@ -1276,8 +1306,10 @@ Kirigami.Page {
         // than being hard-trimmed below. Skipped for Council mode and for
         // !image / !video commands. Compaction is async, so the turn resumes in
         // its completion callback.
+        // Threshold lowered to 75% as first line of defense; server-side
+        // monitoring at 80% provides backup.
         if (root.serverRunning
-                && chatPage.contextPercent >= 85
+                && chatPage.contextPercent >= 75
                 && modeSelector.currentIndex !== 3
                 && !/^!/.test(text)
                 && messageHistory.length > 1) {
@@ -1457,5 +1489,47 @@ Kirigami.Page {
     Toast {
         id: toast
         anchors.fill: parent
+    }
+
+    // Eject confirmation dialog
+    Dialog {
+        id: ejectConfirmation
+        modal: true
+        title: "Eject Model"
+        anchors.centerIn: parent
+        width: 380
+        standardButtons: Dialog.Cancel
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: Kirigami.Units.largeSpacing
+            spacing: Kirigami.Units.mediumSpacing
+
+            Label {
+                text: "Stop the server and unload the model from memory?"
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Cancel"
+                    onClicked: ejectConfirmation.close()
+                }
+                Button {
+                    text: "Eject"
+                    onClicked: {
+                        ejectConfirmation.close()
+                        serverManager.stop()
+                        chatPage.messageHistory = []
+                        chatPage.contextUsed = 0
+                        chatPage.isGenerating = false
+                        toast.show("Model ejected", "info")
+                    }
+                }
+            }
+        }
     }
 }

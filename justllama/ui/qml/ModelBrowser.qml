@@ -73,6 +73,7 @@ Kirigami.Page {
                 width: modelList.width
                 property bool isSelected: modelData.path === selectedModel
                 property bool isHovered: hovered
+                property bool expanded: false
                 background: Rectangle {
                     color: isSelected ? Kirigami.Theme.highlightColor || Qt.rgba(0.2, 0.5, 0.8, 0.2)
                         : isHovered ? Kirigami.Theme.hoverColor || Qt.rgba(1, 1, 1, 0.05)
@@ -92,11 +93,13 @@ Kirigami.Page {
                         radius: parent.radius
                     }
                 }
-                contentItem: RowLayout {
-                    spacing: Kirigami.Units.largeSpacing
+                contentItem: ColumnLayout {
+                    spacing: Kirigami.Units.smallSpacing
 
-                    ColumnLayout {
+                    // Row 1: Model name + size badge
+                    RowLayout {
                         Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
 
                         Label {
                             Layout.fillWidth: true
@@ -105,45 +108,113 @@ Kirigami.Page {
                             elide: Text.ElideRight
                             color: isSelected ? Kirigami.Theme.highlightColor || Qt.rgba(0.2, 0.5, 0.8, 1) : Kirigami.Theme.textColor
                         }
+                        Label {
+                            text: modelData.size_display
+                            color: Kirigami.Theme.disabledTextColor
+                            font.pointSize: 9
+                        }
+                        // Expand/collapse indicator
+                        Label {
+                            text: parent.parent.expanded ? "▼" : "▶"
+                            color: Kirigami.Theme.disabledTextColor
+                            font.pointSize: 8
+                        }
+                    }
+
+                    // Row 2: Action buttons
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        Button {
+                            Layout.fillWidth: true
+                            text: isSelected ? "✓ Active" : "▶ Load"
+                            icon.name: isSelected ? "dialog-ok" : "go-next"
+                            onClicked: {
+                                if (!isSelected) showPreLoadDialog(modelData.path, modelData.name)
+                            }
+                            enabled: !isSelected || modelData.path !== selectedModel
+                        }
+
+                        ToolButton {
+                            icon.name: "configure"
+                            onClicked: openOptionsDialog(modelData.path, modelData.name)
+                            ToolTip.text: "Model Profile"
+                            ToolTip.visible: hovered
+                        }
+                    }
+
+                    // Expandable details section
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.topMargin: Kirigami.Units.smallSpacing
+                        visible: parent.parent.expanded
+                        spacing: Kirigami.Units.smallSpacing
+
+                        Kirigami.Separator {
+                            Layout.fillWidth: true
+                        }
+
+                        // GGUF metadata
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: Kirigami.Units.smallSpacing
+                            visible: modelData.gguf_arch || modelData.gguf_ctx
 
                             Label {
-                                text: modelData.size_display + " • " + new Date(modelData.modified_time * 1000).toLocaleDateString()
-                                color: Kirigami.Theme.disabledTextColor
+                                visible: modelData.gguf_arch
+                                text: "Arch: " + modelData.gguf_arch
+                                color: Kirigami.Theme.neutralTextColor
+                                font.pointSize: 9
                             }
-
                             Label {
-                                property bool fitsInVRAM: modelData.size_gb <= modelBrowser.safe_vram_gb
-                                property bool fitsInTotalSafe: modelData.size_gb <= (modelBrowser.safe_vram_gb + modelBrowser.safe_ram_gb)
-
-                                visible: !fitsInVRAM
-                                Layout.fillWidth: true
-                                wrapMode: Text.Wrap
-                                text: !fitsInTotalSafe ? "⚠️ Exceeds safe memory (OOM crash risk)" : "⚠️ Exceeds VRAM (will spill to system RAM)"
-                                color: !fitsInTotalSafe ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.neutralTextColor
-                                font.italic: true
+                                visible: modelData.gguf_ctx
+                                text: "• Context: " + (modelData.gguf_ctx / 1000).toFixed(0) + "K"
+                                color: Kirigami.Theme.neutralTextColor
+                                font.pointSize: 9
                             }
+                            Label {
+                                visible: modelData.gguf_template
+                                text: "• Template: " + modelData.gguf_template
+                                color: Kirigami.Theme.positiveTextColor
+                                font.pointSize: 9
+                            }
+                            Label {
+                                visible: modelData.gguf_is_moe
+                                text: "• MoE: " + modelData.gguf_expert_count + " experts"
+                                color: Kirigami.Theme.neutralTextColor
+                                font.pointSize: 9
+                            }
+                        }
+
+                        // VRAM warning
+                        Label {
+                            property bool fitsInVRAM: modelData.size_gb <= modelBrowser.safe_vram_gb
+                            property bool fitsInTotalSafe: modelData.size_gb <= (modelBrowser.safe_vram_gb + modelBrowser.safe_ram_gb)
+
+                            visible: !fitsInVRAM
+                            Layout.fillWidth: true
+                            wrapMode: Text.Wrap
+                            text: !fitsInTotalSafe ? "⚠ Exceeds safe memory (OOM crash risk)" : "⚠ Exceeds VRAM (will spill to system RAM)"
+                            color: !fitsInTotalSafe ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.neutralTextColor
+                            font.italic: true
+                            font.pointSize: 9
+                        }
+
+                        // Modified date
+                        Label {
+                            text: "Modified: " + new Date(modelData.modified_time * 1000).toLocaleDateString()
+                            color: Kirigami.Theme.disabledTextColor
+                            font.pointSize: 9
                         }
                     }
 
-                    Button {
-                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                        Layout.preferredWidth: 80
-                        text: "⚙️ Profile"
-                        onClicked: openOptionsDialog(modelData.path, modelData.name)
-                    }
-
-                    Button {
-                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                        Layout.preferredWidth: 100
-                        text: isSelected ? "✓ Active" : "▶️ Load"
-                        icon.name: isSelected ? "dialog-ok" : "go-next"
-                        onClicked: {
-                            if (!isSelected) loadModel(modelData.path)
-                        }
-                        enabled: !isSelected || modelData.path !== selectedModel
+                    // MouseArea for expand/collapse
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: parent.parent.expanded = !parent.parent.expanded
+                        // Pass through clicks to buttons
+                        propagateComposedEvents: true
                     }
                 }
             }
@@ -228,161 +299,503 @@ Kirigami.Page {
     }
 
     function refreshModels() {
-        models = modelBrowser.scan()
+        var rawModels = modelBrowser.scan()
+        // Enrich model data with GGUF metadata
+        for (var i = 0; i < rawModels.length; i++) {
+            var m = rawModels[i]
+            try {
+                var info = ggufMetadata.get_model_info(m.path)
+                m.gguf_arch = info.architecture || ""
+                m.gguf_ctx = info.context_length || 0
+                m.gguf_template = info.has_chat_template ? (info.chat_template_name || "detected") : ""
+                m.gguf_layers = info.block_count || 0
+                m.gguf_is_moe = info.is_moe || false
+                m.gguf_expert_count = info.expert_count || 0
+            } catch (e) {
+                m.gguf_arch = ""
+                m.gguf_ctx = 0
+                m.gguf_template = ""
+                m.gguf_layers = 0
+                m.gguf_is_moe = false
+                m.gguf_expert_count = 0
+            }
+        }
+        models = rawModels
     }
 
     property string editingModelPath: ""
     property string editingModelName: ""
+    property bool editingModelIsMoe: false
 
+    // Pre-load dialog properties
+    property string preLoadModelPath: ""
+    property string preLoadModelName: ""
+
+    // Section expansion states
+    property bool advancedSectionExpanded: false
+    property bool moeSectionExpanded: false
+    property bool draftSectionExpanded: false
+    property bool lowLevelSectionExpanded: false
+
+    // Reusable collapsible section component
+    Component {
+        id: collapsibleSectionTemplate
+        ColumnLayout {
+            property string sectionTitle: ""
+            property bool sectionExpanded: false
+            spacing: 0
+    
+            // Section header
+            Rectangle {
+                Layout.fillWidth: true
+                height: 32
+                color: Kirigami.Theme.alternateBackgroundColor || Qt.rgba(0.5, 0.5, 0.5, 0.1)
+                radius: Kirigami.Units.cornerRadius / 2
+    
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: Kirigami.Units.smallSpacing
+                    anchors.rightMargin: Kirigami.Units.smallSpacing
+                    spacing: Kirigami.Units.smallSpacing
+    
+                    Label {
+                        text: sectionExpanded ? "▼" : "▶"
+                        font.pointSize: 8
+                        color: Kirigami.Theme.disabledTextColor
+                    }
+                    Label {
+                        text: sectionTitle
+                        font.bold: true
+                        color: Kirigami.Theme.textColor
+                    }
+                    Item { Layout.fillWidth: true }
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: sectionExpanded = !sectionExpanded
+                    }
+                }
+            }
+    
+            // Section content
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.leftMargin: Kirigami.Units.largeSpacing
+                Layout.rightMargin: Kirigami.Units.smallSpacing
+                Layout.topMargin: Kirigami.Units.smallSpacing
+                Layout.bottomMargin: Kirigami.Units.smallSpacing
+                visible: sectionExpanded
+                spacing: Kirigami.Units.smallSpacing
+            }
+        }
+    }
+    
     Dialog {
         id: optionsDialog
         modal: true
         title: "Model Profile: " + editingModelName
         anchors.centerIn: parent
-        width: 480
-
+        width: 520
+    
         ColumnLayout {
             anchors.fill: parent
             anchors.margins: Kirigami.Units.largeSpacing
             spacing: Kirigami.Units.smallSpacing
-
-            GridLayout {
-                columns: 2
-                rowSpacing: Kirigami.Units.smallSpacing
-                columnSpacing: Kirigami.Units.largeSpacing
-
-                Label { text: "Context Window (-c):" }
-                SpinBox {
-                    id: optCtxSpin
-                    from: 512; to: 131072; stepSize: 1024
-                    editable: true
-                    Layout.fillWidth: true
-                }
-
-                Label { text: "GPU Offload (-ngl):" }
-                ComboBox {
-                    id: optNglCombo
-                    model: ["auto (automatic split)", "0 (CPU only)", "custom"]
-                    Layout.fillWidth: true
-                }
-
+    
+            // Section 1: Model Info (always visible)
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.smallSpacing
+                visible: detectedInfoLabel.text.length > 0 && detectedInfoLabel.text !== "No GGUF metadata available"
+    
                 Label {
-                    text: "Custom Layers:"
-                    visible: optNglCombo.currentIndex === 2
+                    text: "Model Information"
+                    font.bold: true
+                    color: Kirigami.Theme.textColor
                 }
-                SpinBox {
-                    id: optNglSpin
-                    visible: optNglCombo.currentIndex === 2
-                    from: 0; to: 999
-                    editable: true
-                    Layout.fillWidth: true
-                }
-
-                Label { text: "Flash Attention (--flash-attn):" }
-                ComboBox {
-                    id: optFlashCombo
-                    model: ["auto", "on", "off"]
-                    Layout.fillWidth: true
-                }
-
-                Label { text: "Jinja Template (--jinja):" }
-                CheckBox {
-                    id: optJinjaCheck
-                    text: "Enable Jinja template processing"
-                }
-
-                Label { text: "Chat Template (--chat-template):" }
-                TextField {
-                    id: optTemplateField
-                    placeholderText: "e.g. llama3 or path to template"
-                    Layout.fillWidth: true
-                }
-
-                Label { text: "Threads (-t):" }
-                SpinBox {
-                    id: optThreadsSpin
-                    from: -1; to: 64
-                    editable: true
-                    Layout.fillWidth: true
-                }
-
-                Label { text: "Batch / Micro Batch (-b/-ub):" }
-                RowLayout {
-                    SpinBox { id: optBatchSpin; from: 64; to: 8192; stepSize: 64; editable: true }
-                    SpinBox { id: optUbatchSpin; from: 64; to: 8192; stepSize: 64; editable: true }
-                }
-
-                Label { text: "KV Cache Type (K / V):" }
-                RowLayout {
-                    ComboBox {
-                        id: optCacheKCombo
-                        model: ["default", "f16", "q8_0", "q4_0"]
-                        Layout.fillWidth: true
-                    }
-                    ComboBox {
-                        id: optCacheVCombo
-                        model: ["default", "f16", "q8_0", "q4_0"]
-                        Layout.fillWidth: true
-                    }
-                }
-
-                Label { text: "MoE Expert Offload:" }
-                RowLayout {
-                    CheckBox {
-                        id: optCpuMoeCheck
-                        text: "All experts \u2192 CPU"
-                    }
-                    Label { text: "or first N layers:" }
-                    SpinBox {
-                        id: optNCpuMoeSpin
-                        from: 0; to: 999
-                        editable: true
-                        enabled: !optCpuMoeCheck.checked
-                    }
-                }
-
-                Label { text: "Draft Model (--model-draft):" }
-                TextField {
-                    id: optDraftField
-                    placeholderText: "path to small draft model (shared vocab required)"
-                    Layout.fillWidth: true
-                }
-
                 Label {
-                    text: "Draft (ngl / max / min):"
-                    visible: optDraftField.text.trim().length > 0
+                    id: detectedInfoLabel
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    font.pointSize: 9
+                    color: Kirigami.Theme.disabledTextColor
+                    text: ""
+                    visible: text.length > 0
                 }
-                RowLayout {
-                    visible: optDraftField.text.trim().length > 0
-                    SpinBox { id: optDraftNglSpin; from: 0; to: 999; editable: true }
-                    SpinBox { id: optDraftMaxSpin; from: 0; to: 64; editable: true }
-                    SpinBox { id: optDraftMinSpin; from: 0; to: 64; editable: true }
-                }
-
-                Label { text: "Extra CLI Flags:" }
-                TextField {
-                    id: optExtraField
-                    placeholderText: "e.g. --rope-scaling linear"
+                Kirigami.Separator {
                     Layout.fillWidth: true
                 }
             }
-
+    
+            // Section 2: Basic Settings (always expanded)
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.smallSpacing
+    
+                Label {
+                    text: "Basic Settings"
+                    font.bold: true
+                    color: Kirigami.Theme.textColor
+                }
+    
+                GridLayout {
+                    columns: 2
+                    rowSpacing: Kirigami.Units.smallSpacing
+                    columnSpacing: Kirigami.Units.largeSpacing
+                    Layout.fillWidth: true
+    
+                    Label { text: "Context Window:" }
+                    SpinBox {
+                        id: optCtxSpin
+                        from: 512; to: 131072; stepSize: 1024
+                        editable: true
+                        Layout.fillWidth: true
+                    }
+    
+                    Label { text: "GPU Offload:" }
+                    ComboBox {
+                        id: optNglCombo
+                        model: ["Auto (VRAM-based)", "CPU only", "Custom"]
+                        Layout.fillWidth: true
+                    }
+    
+                    Label {
+                        text: "Custom Layers:"
+                        visible: optNglCombo.currentIndex === 2
+                    }
+                    SpinBox {
+                        id: optNglSpin
+                        visible: optNglCombo.currentIndex === 2
+                        from: 0; to: 999
+                        editable: true
+                        Layout.fillWidth: true
+                    }
+    
+                    Label { text: "Flash Attention:" }
+                    ComboBox {
+                        id: optFlashCombo
+                        model: ["Auto", "On", "Off"]
+                        Layout.fillWidth: true
+                    }
+                }
+            }
+    
+            Kirigami.Separator {
+                Layout.fillWidth: true
+            }
+    
+            // Section 3: Advanced Settings (collapsible)
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 0
+    
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 32
+                    color: Kirigami.Theme.alternateBackgroundColor || Qt.rgba(0.5, 0.5, 0.5, 0.1)
+                    radius: Kirigami.Units.cornerRadius / 2
+    
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Kirigami.Units.smallSpacing
+                        anchors.rightMargin: Kirigami.Units.smallSpacing
+    
+                        Label {
+                            text: advancedSectionExpanded ? "▼" : "▶"
+                            font.pointSize: 8
+                            color: Kirigami.Theme.disabledTextColor
+                        }
+                        Label {
+                            text: "Advanced Settings"
+                            font.bold: true
+                        }
+                        Item { Layout.fillWidth: true }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: advancedSectionExpanded = !advancedSectionExpanded
+                        }
+                    }
+                }
+    
+                GridLayout {
+                    columns: 2
+                    rowSpacing: Kirigami.Units.smallSpacing
+                    columnSpacing: Kirigami.Units.largeSpacing
+                    Layout.fillWidth: true
+                    Layout.leftMargin: Kirigami.Units.largeSpacing
+                    Layout.rightMargin: Kirigami.Units.smallSpacing
+                    Layout.topMargin: Kirigami.Units.smallSpacing
+                    visible: advancedSectionExpanded
+    
+                    Label { text: "Jinja Template:" }
+                    CheckBox {
+                        id: optJinjaCheck
+                        text: "Enable automatic chat template"
+                    }
+    
+                    Label { text: "Chat Template:" }
+                    TextField {
+                        id: optTemplateField
+                        placeholderText: "e.g. llama3 or path to template"
+                        Layout.fillWidth: true
+                    }
+    
+                    Label { text: "Threads:" }
+                    SpinBox {
+                        id: optThreadsSpin
+                        from: -1; to: 64
+                        editable: true
+                        Layout.fillWidth: true
+                    }
+    
+                    Label { text: "Batch Size:" }
+                    SpinBox {
+                        id: optBatchSpin
+                        from: 64; to: 8192; stepSize: 64
+                        editable: true
+                        Layout.fillWidth: true
+                    }
+    
+                    Label { text: "Micro Batch:" }
+                    SpinBox {
+                        id: optUbatchSpin
+                        from: 64; to: 8192; stepSize: 64
+                        editable: true
+                        Layout.fillWidth: true
+                    }
+                }
+            }
+    
+            // Section 4: MoE Expert Options (collapsible, only for MoE models)
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 0
+                visible: editingModelIsMoe
+    
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 32
+                    color: Kirigami.Theme.alternateBackgroundColor || Qt.rgba(0.5, 0.5, 0.5, 0.1)
+                    radius: Kirigami.Units.cornerRadius / 2
+    
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Kirigami.Units.smallSpacing
+                        anchors.rightMargin: Kirigami.Units.smallSpacing
+    
+                        Label {
+                            text: moeSectionExpanded ? "▼" : "▶"
+                            font.pointSize: 8
+                            color: Kirigami.Theme.disabledTextColor
+                        }
+                        Label {
+                            text: "MoE Expert Options"
+                            font.bold: true
+                        }
+                        Item { Layout.fillWidth: true }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: moeSectionExpanded = !moeSectionExpanded
+                        }
+                    }
+                }
+    
+                GridLayout {
+                    columns: 2
+                    rowSpacing: Kirigami.Units.smallSpacing
+                    columnSpacing: Kirigami.Units.largeSpacing
+                    Layout.fillWidth: true
+                    Layout.leftMargin: Kirigami.Units.largeSpacing
+                    Layout.rightMargin: Kirigami.Units.smallSpacing
+                    Layout.topMargin: Kirigami.Units.smallSpacing
+                    visible: moeSectionExpanded
+    
+                    Label { text: "Expert Offload:" }
+                    RowLayout {
+                        CheckBox {
+                            id: optCpuMoeCheck
+                            text: "All experts to CPU"
+                        }
+                        Label { text: "or first N layers:" }
+                        SpinBox {
+                            id: optNCpuMoeSpin
+                            from: 0; to: 999
+                            editable: true
+                            enabled: !optCpuMoeCheck.checked
+                        }
+                    }
+                }
+            }
+    
+            // Section 5: Speculative Decoding (collapsible)
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 0
+    
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 32
+                    color: Kirigami.Theme.alternateBackgroundColor || Qt.rgba(0.5, 0.5, 0.5, 0.1)
+                    radius: Kirigami.Units.cornerRadius / 2
+    
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Kirigami.Units.smallSpacing
+                        anchors.rightMargin: Kirigami.Units.smallSpacing
+    
+                        Label {
+                            text: draftSectionExpanded ? "▼" : "▶"
+                            font.pointSize: 8
+                            color: Kirigami.Theme.disabledTextColor
+                        }
+                        Label {
+                            text: "Speculative Decoding"
+                            font.bold: true
+                        }
+                        Item { Layout.fillWidth: true }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: draftSectionExpanded = !draftSectionExpanded
+                        }
+                    }
+                }
+    
+                GridLayout {
+                    columns: 2
+                    rowSpacing: Kirigami.Units.smallSpacing
+                    columnSpacing: Kirigami.Units.largeSpacing
+                    Layout.fillWidth: true
+                    Layout.leftMargin: Kirigami.Units.largeSpacing
+                    Layout.rightMargin: Kirigami.Units.smallSpacing
+                    Layout.topMargin: Kirigami.Units.smallSpacing
+                    visible: draftSectionExpanded
+    
+                    Label { text: "Draft Model:" }
+                    TextField {
+                        id: optDraftField
+                        placeholderText: "path to draft model"
+                        Layout.fillWidth: true
+                    }
+    
+                    Label {
+                        text: "Draft GPU Layers:"
+                        visible: optDraftField.text.trim().length > 0
+                    }
+                    SpinBox {
+                        id: optDraftNglSpin
+                        from: 0; to: 999
+                        editable: true
+                        visible: optDraftField.text.trim().length > 0
+                        Layout.fillWidth: true
+                    }
+    
+                    Label {
+                        text: "Draft Max:"
+                        visible: optDraftField.text.trim().length > 0
+                    }
+                    SpinBox {
+                        id: optDraftMaxSpin
+                        from: 0; to: 64
+                        editable: true
+                        visible: optDraftField.text.trim().length > 0
+                        Layout.fillWidth: true
+                    }
+    
+                    Label {
+                        text: "Draft Min:"
+                        visible: optDraftField.text.trim().length > 0
+                    }
+                    SpinBox {
+                        id: optDraftMinSpin
+                        from: 0; to: 64
+                        editable: true
+                        visible: optDraftField.text.trim().length > 0
+                        Layout.fillWidth: true
+                    }
+                }
+            }
+    
+            // Section 6: Low-Level (collapsible)
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 0
+    
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 32
+                    color: Kirigami.Theme.alternateBackgroundColor || Qt.rgba(0.5, 0.5, 0.5, 0.1)
+                    radius: Kirigami.Units.cornerRadius / 2
+    
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Kirigami.Units.smallSpacing
+                        anchors.rightMargin: Kirigami.Units.smallSpacing
+    
+                        Label {
+                            text: lowLevelSectionExpanded ? "▼" : "▶"
+                            font.pointSize: 8
+                            color: Kirigami.Theme.disabledTextColor
+                        }
+                        Label {
+                            text: "Low-Level Settings"
+                            font.bold: true
+                        }
+                        Item { Layout.fillWidth: true }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: lowLevelSectionExpanded = !lowLevelSectionExpanded
+                        }
+                    }
+                }
+    
+                GridLayout {
+                    columns: 2
+                    rowSpacing: Kirigami.Units.smallSpacing
+                    columnSpacing: Kirigami.Units.largeSpacing
+                    Layout.fillWidth: true
+                    Layout.leftMargin: Kirigami.Units.largeSpacing
+                    Layout.rightMargin: Kirigami.Units.smallSpacing
+                    Layout.topMargin: Kirigami.Units.smallSpacing
+                    visible: lowLevelSectionExpanded
+    
+                    Label { text: "KV Cache (K / V):" }
+                    RowLayout {
+                        ComboBox {
+                            id: optCacheKCombo
+                            model: ["default", "f16", "q8_0", "q4_0"]
+                            Layout.fillWidth: true
+                        }
+                        ComboBox {
+                            id: optCacheVCombo
+                            model: ["default", "f16", "q8_0", "q4_0"]
+                            Layout.fillWidth: true
+                        }
+                    }
+    
+                    Label { text: "Extra CLI Flags:" }
+                    TextField {
+                        id: optExtraField
+                        placeholderText: "e.g. --rope-scaling linear"
+                        Layout.fillWidth: true
+                    }
+                }
+            }
+    
             RowLayout {
                 Layout.topMargin: Kirigami.Units.largeSpacing
                 Layout.fillWidth: true
-
+    
                 Button {
                     text: "Reset Defaults"
                     onClicked: resetOptions()
                 }
-
+    
                 Item { Layout.fillWidth: true }
-
+    
                 Button {
                     text: "Cancel"
                     onClicked: optionsDialog.close()
                 }
-
+    
                 Button {
                     text: "Save Profile"
                     onClicked: saveOptions()
@@ -397,7 +810,31 @@ Kirigami.Page {
         var profile = modelProfiles.get_model_profile(path)
         var eff = JSON.parse(modelProfiles.get_effective_config_json(path, appSettings))
 
-        optCtxSpin.value = eff.ctx_size || 4096
+        // Read GGUF metadata for info display
+        var ggufInfo = {}
+        try {
+            ggufInfo = ggufMetadata.get_model_info(path)
+        } catch (e) {
+            // Ignore errors
+        }
+
+        // Detect MoE model
+        editingModelIsMoe = ggufInfo.is_moe || false
+
+        // Show auto-detected info label
+        var autoInfo = ""
+        if (ggufInfo.architecture) autoInfo += "Architecture: " + ggufInfo.architecture + "  |  "
+        if (ggufInfo.block_count) autoInfo += "Layers: " + ggufInfo.block_count + "  |  "
+        if (ggufInfo.context_length) autoInfo += "Training Context: " + ggufInfo.context_length + "  |  "
+        if (ggufInfo.has_chat_template) autoInfo += "Template: " + (ggufInfo.chat_template_name || "detected")
+        if (ggufInfo.is_moe) autoInfo += "  |  MoE: " + ggufInfo.expert_count + " experts, " + ggufInfo.expert_used_count + " used"
+        if (eff._auto_ctx) autoInfo += "\n(Context auto-set to " + eff.ctx_size + " from GGUF metadata)"
+        if (eff._ngl_auto) autoInfo += "\n(GPU layers auto-set to " + eff.n_gpu_layers + " based on VRAM)"
+        detectedInfoLabel.text = autoInfo.length > 0 ? autoInfo : "No GGUF metadata available"
+
+        // Set context size - show the effective (possibly auto-detected) value
+        optCtxSpin.value = eff.ctx_size || 8192
+
         var ngl = profile.n_gpu_layers !== undefined ? profile.n_gpu_layers : "auto"
         if (ngl === "auto" || ngl === 99 || ngl === -1) {
             optNglCombo.currentIndex = 0
@@ -415,7 +852,8 @@ Kirigami.Page {
         else if (fa === "off" || fa === false) optFlashCombo.currentIndex = 2
         else optFlashCombo.currentIndex = 0
 
-        optJinjaCheck.checked = !!profile.jinja
+        // Jinja is now enabled by default for automatic chat template
+        optJinjaCheck.checked = profile.jinja !== undefined ? !!profile.jinja : true
         optTemplateField.text = profile.chat_template || ""
         optThreadsSpin.value = profile.threads !== undefined ? profile.threads : -1
         optBatchSpin.value = profile.batch_size || 512
@@ -477,9 +915,70 @@ Kirigami.Page {
     }
 
     function resetOptions() {
+        // Delete existing profile, then re-populate dialog with GGUF-derived defaults
         modelProfiles.delete_profile(editingModelPath)
-        toast.show("Reset to global defaults for " + editingModelName, "info")
-        optionsDialog.close()
+
+        // Read GGUF metadata and set smart defaults
+        var ggufInfo = {}
+        try {
+            ggufInfo = ggufMetadata.get_model_info(editingModelPath)
+        } catch (e) {
+            // Ignore errors
+        }
+
+        // Set context size from GGUF or fallback
+        if (ggufInfo.context_length > 0) {
+            var safeCtx = Math.min(Math.floor(ggufInfo.context_length * 0.75), 32768)
+            optCtxSpin.value = safeCtx
+        } else {
+            optCtxSpin.value = 8192
+        }
+
+        // Set NGL to auto
+        optNglCombo.currentIndex = 0
+        optNglSpin.value = 0
+
+        // Flash attention to auto
+        optFlashCombo.currentIndex = 0
+
+        // Jinja enabled by default
+        optJinjaCheck.checked = true
+        optTemplateField.text = ""
+
+        // Threads to auto
+        optThreadsSpin.value = -1
+
+        // Batch sizes to defaults
+        optBatchSpin.value = 512
+        optUbatchSpin.value = 512
+
+        // Cache types to default
+        optCacheKCombo.currentIndex = 0
+        optCacheVCombo.currentIndex = 0
+
+        // MoE off
+        optCpuMoeCheck.checked = false
+        optNCpuMoeSpin.value = 0
+
+        // Draft model empty
+        optDraftField.text = ""
+        optDraftNglSpin.value = 99
+        optDraftMaxSpin.value = 0
+        optDraftMinSpin.value = 0
+
+        // Extra args empty
+        optExtraField.text = ""
+
+        // Update detected info label
+        var autoInfo = ""
+        if (ggufInfo.architecture) autoInfo += "Architecture: " + ggufInfo.architecture + "  |  "
+        if (ggufInfo.block_count) autoInfo += "Layers: " + ggufInfo.block_count + "  |  "
+        if (ggufInfo.context_length) autoInfo += "Training Context: " + ggufInfo.context_length + "  |  "
+        if (ggufInfo.has_chat_template) autoInfo += "Template: " + (ggufInfo.chat_template_name || "detected")
+        if (ggufInfo.is_moe) autoInfo += "  |  MoE: " + ggufInfo.expert_count + " experts, " + ggufInfo.expert_used_count + " used"
+        detectedInfoLabel.text = autoInfo.length > 0 ? autoInfo : "No GGUF metadata available"
+
+        toast.show("Reset to auto-detected defaults for " + editingModelName, "info")
     }
 
     function loadModel(path) {
@@ -494,15 +993,180 @@ Kirigami.Page {
 
         var bin = appSettings.get_string("server/binary")
         var port = appSettings.get_int("server/port")
-        var profileJson = modelProfiles.get_effective_config_json(path, appSettings)
-        var eff = JSON.parse(profileJson)
-        console.log("Starting server with model profile:", path, profileJson)
-        var ok = serverManager.start(bin, path, port, eff.ctx_size, eff.n_gpu_layers, eff.threads, profileJson)
+
+        // Build profile JSON from pre-load dialog settings
+        var preNgl = "auto"
+        if (preLoadNglCombo.currentIndex === 1) preNgl = 0
+        else if (preLoadNglCombo.currentIndex === 2) preNgl = preLoadNglSpin.value
+
+        var preFa = "auto"
+        if (preLoadFlashCombo.currentIndex === 1) preFa = "on"
+        else if (preLoadFlashCombo.currentIndex === 2) preFa = "off"
+
+        var profile = {
+            "ctx_size": preLoadCtxSpin.value,
+            "n_gpu_layers": preNgl,
+            "flash_attn": preFa
+        }
+        var profileJson = JSON.stringify(profile)
+
+        // Save as model profile so settings persist
+        modelProfiles.save_model_profile(path, profileJson)
+
+        var eff = JSON.parse(modelProfiles.get_effective_config_json(path, appSettings))
+        console.log("Starting server with model profile:", path, JSON.stringify(eff))
+        var ok = serverManager.start(bin, path, port, eff.ctx_size, eff.n_gpu_layers, eff.threads, JSON.stringify(eff))
         console.log("Server start result:", ok)
         if (!ok) {
             toast.show("Failed to start server with model: " + path.split('/').pop(), "error")
         }
     }
+
+    function showPreLoadDialog(path, name) {
+        preLoadModelPath = path
+        preLoadModelName = name
+
+        // Read effective config to pre-fill dialog
+        var eff = JSON.parse(modelProfiles.get_effective_config_json(path, appSettings))
+        var ggufInfo = {}
+        try {
+            ggufInfo = ggufMetadata.get_model_info(path)
+        } catch (e) {}
+
+        // Populate info label
+        var info = name
+        if (ggufInfo.architecture) info += "  |  " + ggufInfo.architecture
+        if (ggufInfo.block_count) info += "  |  " + ggufInfo.block_count + " layers"
+        if (ggufInfo.is_moe) info += "  |  MoE (" + ggufInfo.expert_count + " experts)"
+        preLoadInfoLabel.text = info
+
+        // Pre-fill settings
+        preLoadCtxSpin.value = eff.ctx_size || 8192
+
+        var ngl = eff.n_gpu_layers
+        if (ngl === "auto" || ngl === 99 || ngl === -1) {
+            preLoadNglCombo.currentIndex = 0
+            preLoadNglSpin.value = 0
+        } else if (ngl === 0 || ngl === "0") {
+            preLoadNglCombo.currentIndex = 1
+            preLoadNglSpin.value = 0
+        } else {
+            preLoadNglCombo.currentIndex = 2
+            preLoadNglSpin.value = parseInt(ngl) || 0
+        }
+
+        var fa = eff.flash_attn
+        if (fa === "on" || fa === true) preLoadFlashCombo.currentIndex = 1
+        else if (fa === "off" || fa === false) preLoadFlashCombo.currentIndex = 2
+        else preLoadFlashCombo.currentIndex = 0
+
+        preLoadDialog.title = "Load Model: " + name
+        preLoadDialog.open()
+    }
+    // Pre-load confirmation dialog
+    Dialog {
+        id: preLoadDialog
+        modal: true
+        title: "Load Model"
+        anchors.centerIn: parent
+        width: 440
+        standardButtons: Dialog.Cancel
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: Kirigami.Units.largeSpacing
+            spacing: Kirigami.Units.mediumSpacing
+
+            // Model info
+            Label {
+                id: preLoadInfoLabel
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                font.bold: true
+                color: Kirigami.Theme.textColor
+            }
+
+            Kirigami.Separator {
+                Layout.fillWidth: true
+            }
+
+            Label {
+                text: "Review and adjust settings before loading:"
+                font.pointSize: 9
+                color: Kirigami.Theme.disabledTextColor
+            }
+
+            GridLayout {
+                columns: 2
+                rowSpacing: Kirigami.Units.smallSpacing
+                columnSpacing: Kirigami.Units.largeSpacing
+                Layout.fillWidth: true
+
+                Label { text: "Context Window:" }
+                SpinBox {
+                    id: preLoadCtxSpin
+                    from: 512; to: 131072; stepSize: 1024
+                    editable: true
+                    Layout.fillWidth: true
+                }
+
+                Label { text: "GPU Offload:" }
+                ComboBox {
+                    id: preLoadNglCombo
+                    model: ["Auto (VRAM-based)", "CPU only", "Custom"]
+                    Layout.fillWidth: true
+                }
+
+                Label {
+                    text: "Custom Layers:"
+                    visible: preLoadNglCombo.currentIndex === 2
+                }
+                SpinBox {
+                    id: preLoadNglSpin
+                    visible: preLoadNglCombo.currentIndex === 2
+                    from: 0; to: 999
+                    editable: true
+                    Layout.fillWidth: true
+                }
+
+                Label { text: "Flash Attention:" }
+                ComboBox {
+                    id: preLoadFlashCombo
+                    model: ["Auto", "On", "Off"]
+                    Layout.fillWidth: true
+                }
+            }
+
+            RowLayout {
+                Layout.topMargin: Kirigami.Units.mediumSpacing
+                Layout.fillWidth: true
+
+                Button {
+                    text: "Edit Full Profile"
+                    onClicked: {
+                        preLoadDialog.close()
+                        openOptionsDialog(preLoadModelPath, preLoadModelName)
+                    }
+                }
+
+                Item { Layout.fillWidth: true }
+
+                Button {
+                    text: "Cancel"
+                    onClicked: preLoadDialog.close()
+                }
+
+                Button {
+                    text: "Load Model"
+                    onClicked: {
+                        preLoadDialog.close()
+                        loadModel(preLoadModelPath)
+                    }
+                }
+            }
+        }
+    }
+
     function startDownload() {
         var repo = repoIdField.text.trim()
         var filename = filenameField.text.trim()

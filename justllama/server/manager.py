@@ -126,14 +126,30 @@ class ServerManager(QObject):
         mp = ModelProfiles()
         eff = mp.get_effective_config(model_path, self._settings)
 
+        # Log auto-detected values for transparency
+        if eff.get("_auto_ctx"):
+            self.log_line.emit(f"Auto-detected context size: {eff['ctx_size']} (from GGUF metadata)")
+        if eff.get("_ctx_capped_by_vram"):
+            self.log_line.emit(
+                f"VRAM safety cap: context reduced from {eff['_ctx_original']} "
+                f"to {eff['ctx_size']} to prevent OOM"
+            )
+        if eff.get("_ngl_auto"):
+            self.log_line.emit(
+                f"Auto-detected GPU layers: {eff['n_gpu_layers']} "
+                f"(from {eff['_ngl_original']}) based on VRAM and model type"
+            )
+
         # System runtime overrides (binary, port, non-default ctx/gpu/threads)
         if binary:
             eff["binary"] = binary
         if port:
             eff["port"] = port
-        if ctx_size != 4096:
+        # Only override ctx_size if explicitly passed (not default 4096)
+        if ctx_size != 4096 and ctx_size != 0:
             eff["ctx_size"] = ctx_size
-        if n_gpu_layers not in (99, -1, "auto"):
+        # Only override n_gpu_layers if explicitly set (not auto/99/-1)
+        if n_gpu_layers not in (99, -1, "auto", "AUTO"):
             eff["n_gpu_layers"] = n_gpu_layers
         if threads != -1:
             eff["threads"] = threads
