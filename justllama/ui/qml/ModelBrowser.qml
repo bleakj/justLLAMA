@@ -510,7 +510,8 @@ Kirigami.Page {
                         }
                         Item { Layout.fillWidth: true }
                         MouseArea {
-                            anchors.fill: parent
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
                             onClicked: advancedSectionExpanded = !advancedSectionExpanded
                         }
                     }
@@ -593,7 +594,8 @@ Kirigami.Page {
                         }
                         Item { Layout.fillWidth: true }
                         MouseArea {
-                            anchors.fill: parent
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
                             onClicked: moeSectionExpanded = !moeSectionExpanded
                         }
                     }
@@ -653,7 +655,8 @@ Kirigami.Page {
                         }
                         Item { Layout.fillWidth: true }
                         MouseArea {
-                            anchors.fill: parent
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
                             onClicked: draftSectionExpanded = !draftSectionExpanded
                         }
                     }
@@ -741,7 +744,8 @@ Kirigami.Page {
                         }
                         Item { Layout.fillWidth: true }
                         MouseArea {
-                            anchors.fill: parent
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
                             onClicked: lowLevelSectionExpanded = !lowLevelSectionExpanded
                         }
                     }
