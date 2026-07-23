@@ -12,7 +12,7 @@ from PySide6.QtCore import QObject, Signal, Slot, QThread
 
 
 _GITHUB_API = "https://api.github.com/repos/ggerganov/llama.cpp/releases/latest"
-_CURRENT_VERSION = "b6153"  # tracks installed version
+_CURRENT_VERSION = "c0bc8591e"  # tracks installed version (commit hash from b10098 release)
 
 
 class _CheckWorker(QThread):
