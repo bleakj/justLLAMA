@@ -10,6 +10,7 @@ from PySide6.QtQuickControls2 import QQuickStyle
 
 from justllama.config.settings import AppSettings
 from justllama.config.env import load_env
+from justllama.config.themes import ThemeManager
 from justllama.server.manager import ServerManager
 from justllama.server.council import CouncilManager
 from justllama.server.updater import Updater
@@ -52,6 +53,7 @@ def main():
     # Load secrets from .env into os.environ before any key reads occur.
     load_env()
     settings = AppSettings()
+    theme_manager = ThemeManager(settings)
     server_manager = ServerManager(settings)
     model_browser = ModelBrowser(settings.models_directory)
     model_downloader = ModelDownloader(settings.models_directory)
@@ -135,6 +137,7 @@ def main():
     ctx.setContextProperty("chatManager", chat_manager)
     ctx.setContextProperty("externalModels", external_models)
     ctx.setContextProperty("terminalManager", terminal_manager)
+    ctx.setContextProperty("themeManager", theme_manager)
     if qml_file.exists():
         engine.load(qml_file.as_uri())
     else:

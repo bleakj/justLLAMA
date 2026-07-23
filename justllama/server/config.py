@@ -28,14 +28,15 @@ class ServerConfig:
     batch_size: int = 512
     ubatch_size: int = 512
     flash_attn: bool | str = "on"
+    fit: bool = False  # --fit off: disable auto-fit to device memory (we manage VRAM ourselves)
     mmap: bool = True
     mlock: bool = False
     numa: str = ""  # "disabled", "numactl", "isolate", "distribute"
     jinja: bool = False
     chat_template: str = ""
-    # KV cache quantization ("", "f16", "q8_0", "q4_0", ...). Empty = default.
-    cache_type_k: str = ""
-    cache_type_v: str = ""
+    # KV cache quantization ("", "f16", "q8_0", "q4_0", ...). Default q8_0 saves VRAM.
+    cache_type_k: str = "q8_0"
+    cache_type_v: str = "q8_0"
     # Mixture-of-Experts expert offload to CPU. n_cpu_moe > 0 offloads the
     # experts of that many layers; cpu_moe offloads ALL experts. n_cpu_moe wins
     # if both are set.
@@ -98,6 +99,9 @@ class ServerConfig:
             cmd.extend(["--flash-attn", fa_val])
         elif fa_val:
             cmd.extend(["--flash-attn", fa_val])
+
+        # --fit: auto-adjust params to fit in device memory
+        cmd.extend(["--fit", "on" if self.fit else "off"])
 
         # Enable Jinja by default for automatic chat template from GGUF
         if self.jinja:

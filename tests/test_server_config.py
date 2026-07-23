@@ -268,10 +268,22 @@ class TestBuildCommandPerformanceKnobs:
         assert cmd[cmd.index("--cache-type-v") + 1] == "q4_0"
 
     def test_cache_type_empty_omits(self):
-        cfg = _valid_config()
+        cfg = _valid_config(cache_type_k="", cache_type_v="")
         cmd = cfg.build_command()
         assert "--cache-type-k" not in cmd
         assert "--cache-type-v" not in cmd
+
+    def test_fit_flag_off_by_default(self):
+        cfg = _valid_config()
+        cmd = cfg.build_command()
+        idx = cmd.index("--fit")
+        assert cmd[idx + 1] == "off"
+
+    def test_fit_flag_on(self):
+        cfg = _valid_config(fit=True)
+        cmd = cfg.build_command()
+        idx = cmd.index("--fit")
+        assert cmd[idx + 1] == "on"
 
     def test_cpu_moe_flag(self):
         cfg = _valid_config(cpu_moe=True)

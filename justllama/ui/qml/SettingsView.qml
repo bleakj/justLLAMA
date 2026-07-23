@@ -99,6 +99,46 @@ Kirigami.ScrollablePage {
             }
         }
 
+        // Appearance Settings
+        Kirigami.AbstractCard {
+            Layout.fillWidth: true
+
+            contentItem: ColumnLayout {
+                spacing: Kirigami.Units.smallSpacing
+
+                Label {
+                    text: "Appearance"
+                    font.bold: true
+                    font.pointSize: 14
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label { text: "Theme:"; Layout.preferredWidth: 120 }
+                    ComboBox {
+                        id: themeCombo
+                        model: ["Default", "Catppuccin Latte", "Catppuccin Frappe", "Catppuccin Macchiato", "Catppuccin Mocha"]
+                        currentIndex: {
+                            var current = themeManager.current_theme()
+                            var names = ["default", "catppuccin-latte", "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-mocha"]
+                            var idx = names.indexOf(current)
+                            return idx >= 0 ? idx : 0
+                        }
+                        Layout.fillWidth: true
+                    }
+                    Button {
+                        text: "Apply"
+                        onClicked: {
+                            var keys = ["default", "catppuccin-latte", "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-mocha"]
+                            var key = keys[themeCombo.currentIndex]
+                            themeManager.set_theme(key)
+                            toast.show("Theme changed to: " + themeCombo.currentText, "success")
+                        }
+                    }
+                }
+            }
+        }
+
         // Server Settings
         Kirigami.AbstractCard {
             Layout.fillWidth: true

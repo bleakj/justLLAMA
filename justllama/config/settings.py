@@ -35,8 +35,9 @@ class AppSettings(QObject):
             "server/mmap": True,
             "server/mlock": False,
             "server/numa": "",
-            "server/cache_type_k": "",
-            "server/cache_type_v": "",
+            "server/fit": False,
+            "server/cache_type_k": "q8_0",
+            "server/cache_type_v": "q8_0",
             "server/cpu_moe": False,
             "server/n_cpu_moe": 0,
             "server/model_draft": "",
@@ -64,6 +65,7 @@ class AppSettings(QObject):
             "chat/voice_send_automatically": False,
             "skills/user_directory": str(Path.home() / ".local" / "share" / "justllama" / "skills"),
             "cloud_endpoints/opencode": "https://api.opencode.com",
+            "ui/theme": "default",
         }
         for key, default in defaults.items():
             if self._s.value(key) is None:

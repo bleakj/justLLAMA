@@ -15,6 +15,36 @@ Kirigami.ApplicationWindow {
     property bool serverRunning: false
     property int serverPort: 8080
 
+    // Theme color overrides — when themeManager returns "" we fall back to Kirigami defaults
+    property bool hasCustomTheme: themeManager.current_theme() !== "default"
+    property color themeBg: hasCustomTheme && themeManager.color("backgroundColor") !== "" ? themeManager.color("backgroundColor") : Kirigami.Theme.backgroundColor
+    property color themeAltBg: hasCustomTheme && themeManager.color("alternateBackgroundColor") !== "" ? themeManager.color("alternateBackgroundColor") : Kirigami.Theme.alternateBackgroundColor
+    property color themeText: hasCustomTheme && themeManager.color("textColor") !== "" ? themeManager.color("textColor") : Kirigami.Theme.textColor
+    property color themeHighlight: hasCustomTheme && themeManager.color("highlightColor") !== "" ? themeManager.color("highlightColor") : Kirigami.Theme.highlightColor
+    property color themeHighlightText: hasCustomTheme && themeManager.color("highlightedTextColor") !== "" ? themeManager.color("highlightedTextColor") : Kirigami.Theme.highlightedTextColor
+    property color themePositive: hasCustomTheme && themeManager.color("positiveTextColor") !== "" ? themeManager.color("positiveTextColor") : Kirigami.Theme.positiveTextColor
+    property color themeNegative: hasCustomTheme && themeManager.color("negativeTextColor") !== "" ? themeManager.color("negativeTextColor") : Kirigami.Theme.negativeTextColor
+    property color themeDisabled: hasCustomTheme && themeManager.color("disabledTextColor") !== "" ? themeManager.color("disabledTextColor") : Kirigami.Theme.disabledTextColor
+
+    Kirigami.Theme.colorSet: Kirigami.Theme.View
+    Kirigami.Theme.backgroundColor: themeBg
+    Kirigami.Theme.alternateBackgroundColor: themeAltBg
+    Kirigami.Theme.textColor: themeText
+    Kirigami.Theme.highlightColor: themeHighlight
+    Kirigami.Theme.highlightedTextColor: themeHighlightText
+    Kirigami.Theme.positiveTextColor: themePositive
+    Kirigami.Theme.negativeTextColor: themeNegative
+    Kirigami.Theme.disabledTextColor: themeDisabled
+
+    // Refresh theme colors when theme changes
+    Connections {
+        target: themeManager
+        function onColors_changed() {
+            // Force property re-evaluation by toggling hasCustomTheme
+            hasCustomTheme = themeManager.current_theme() !== "default"
+        }
+    }
+
     globalDrawer: Kirigami.GlobalDrawer {
         title: "justLLAMA"
 
