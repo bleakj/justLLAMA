@@ -79,7 +79,7 @@ Kirigami.Page {
                 Layout.fillWidth: true
             }
 
-            Rectangle { Layout.fillWidth: true; height: 1; color: safeBorderColor }
+            Kirigami.Separator { Layout.fillWidth: true }
 
             // ── Connection Info ──
             Label {
@@ -89,126 +89,30 @@ Kirigami.Page {
             }
 
             // Base URL
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: urlRow.implicitHeight + Kirigami.Units.largeSpacing * 2
-                color: safeAltBgColor
-                radius: Kirigami.Units.cornerRadius
-                border.color: safeBorderColor
-                border.width: 1
-
-                RowLayout {
-                    id: urlRow
-                    anchors.fill: parent
-                    anchors.margins: Kirigami.Units.largeSpacing
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 2
-
-                        Label {
-                            text: "Base URL"
-                            font.bold: true
-                            font.pointSize: 11
-                        }
-                        Label {
-                            text: apiPage.baseUrl
-                            font.pointSize: 12
-                            font.family: "monospace"
-                            color: safeTextColor
-                            Layout.fillWidth: true
-                        }
-                    }
-
-                    Button {
-                        text: "Copy"
-                        icon.name: "edit-copy"
-                        onClicked: apiPage.copyToClipboard(apiPage.baseUrl)
-                    }
-                }
+            InfoField {
+                label: "Base URL"
+                value: apiPage.baseUrl
+                onCopy: apiPage.copyToClipboard(apiPage.baseUrl)
             }
 
             // API Key
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: keyRow.implicitHeight + Kirigami.Units.largeSpacing * 2
-                color: safeAltBgColor
-                radius: Kirigami.Units.cornerRadius
-                border.color: safeBorderColor
-                border.width: 1
-
-                RowLayout {
-                    id: keyRow
-                    anchors.fill: parent
-                    anchors.margins: Kirigami.Units.largeSpacing
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 2
-
-                        Label {
-                            text: "API Key"
-                            font.bold: true
-                            font.pointSize: 11
-                        }
-                        Label {
-                            text: "No key required (local server)"
-                            font.pointSize: 12
-                            color: safeDisabledColor
-                            Layout.fillWidth: true
-                        }
-                    }
-
-                    Button {
-                        text: "Copy"
-                        icon.name: "edit-copy"
-                        onClicked: apiPage.copyToClipboard("no-key")
-                    }
-                }
+            InfoField {
+                label: "API Key"
+                value: "No key required (local server)"
+                mono: false
+                valueMuted: true
+                onCopy: apiPage.copyToClipboard("no-key")
             }
 
             // Model Name
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: modelRow.implicitHeight + Kirigami.Units.largeSpacing * 2
-                color: safeAltBgColor
-                radius: Kirigami.Units.cornerRadius
-                border.color: safeBorderColor
-                border.width: 1
-
-                RowLayout {
-                    id: modelRow
-                    anchors.fill: parent
-                    anchors.margins: Kirigami.Units.largeSpacing
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 2
-
-                        Label {
-                            text: "Model Name"
-                            font.bold: true
-                            font.pointSize: 11
-                        }
-                        Label {
-                            text: apiPage.modelFileName || "(no model loaded)"
-                            font.pointSize: 12
-                            font.family: "monospace"
-                            color: safeTextColor
-                            Layout.fillWidth: true
-                        }
-                    }
-
-                    Button {
-                        text: "Copy"
-                        icon.name: "edit-copy"
-                        onClicked: apiPage.copyToClipboard(apiPage.modelFileName)
-                        enabled: apiPage.modelFileName !== ""
-                    }
-                }
+            InfoField {
+                label: "Model Name"
+                value: apiPage.modelFileName || "(no model loaded)"
+                copyEnabled: apiPage.modelFileName !== ""
+                onCopy: apiPage.copyToClipboard(apiPage.modelFileName)
             }
 
-            Rectangle { Layout.fillWidth: true; height: 1; color: safeBorderColor }
+            Kirigami.Separator { Layout.fillWidth: true }
 
             // ── Quick Config Snippets ──
             Label {
@@ -245,7 +149,7 @@ Kirigami.Page {
                 onCopy: apiPage.copyToClipboard(snippet)
             }
 
-            Rectangle { Layout.fillWidth: true; height: 1; color: safeBorderColor }
+            Kirigami.Separator { Layout.fillWidth: true }
 
             // ── Available Endpoints ──
             Label {
@@ -290,7 +194,7 @@ Kirigami.Page {
             }
 
 
-            Rectangle { Layout.fillWidth: true; height: 1; color: safeBorderColor }
+            Kirigami.Separator { Layout.fillWidth: true }
 
             Label {
                 text: "Image & Video Generation API (ComfyUI)"
@@ -308,46 +212,13 @@ Kirigami.Page {
             }
 
             // ComfyUI Base URL
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: comfyUrlRow.implicitHeight + Kirigami.Units.largeSpacing * 2
-                color: safeAltBgColor
-                radius: Kirigami.Units.cornerRadius
-                border.color: safeBorderColor
-                border.width: 1
-
-                RowLayout {
-                    id: comfyUrlRow
-                    anchors.fill: parent
-                    anchors.margins: Kirigami.Units.largeSpacing
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 2
-
-                        Label {
-                            text: "ComfyUI Base URL"
-                            font.bold: true
-                            font.pointSize: 11
-                        }
-                        Label {
-                            text: "http://localhost:8188"
-                            font.pointSize: 12
-                            font.family: "monospace"
-                            color: safeTextColor
-                            Layout.fillWidth: true
-                        }
-                    }
-
-                    Button {
-                        text: "Copy"
-                        icon.name: "edit-copy"
-                        onClicked: apiPage.copyToClipboard("http://localhost:8188")
-                    }
-                }
+            InfoField {
+                label: "ComfyUI Base URL"
+                value: "http://localhost:8188"
+                onCopy: apiPage.copyToClipboard("http://localhost:8188")
             }
 
-            Rectangle { Layout.fillWidth: true; height: 1; color: safeBorderColor }
+            Kirigami.Separator { Layout.fillWidth: true }
 
             // ComfyUI Available Endpoints
             Label {

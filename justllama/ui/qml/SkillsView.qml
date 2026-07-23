@@ -17,19 +17,8 @@ Kirigami.ScrollablePage {
         spacing: Kirigami.Units.largeSpacing
 
     // Branding header
-    Rectangle {
-        Layout.fillWidth: true
-        height: 48
-        radius: Kirigami.Units.cornerRadius
-        color: Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.1)
-
-        Label {
-            anchors.centerIn: parent
-            text: "🧩 Skills / MCP"
-            font.bold: true
-            font.pointSize: 16
-            color: Kirigami.Theme.highlightColor
-        }
+    SectionHeader {
+        title: "Skills / MCP"
     }
 
     // ── MCP Servers ──

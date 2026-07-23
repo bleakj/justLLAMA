@@ -12,3 +12,5 @@ ImageGenView 1.0 ImageView.qml
 VideoGenView 1.0 VideoView.qml
 SkillsView 1.0 SkillsView.qml
 Toast 1.0 Toast.qml
+SectionHeader 1.0 SectionHeader.qml
+InfoField 1.0 InfoField.qml

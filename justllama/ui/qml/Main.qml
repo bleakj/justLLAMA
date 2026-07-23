@@ -45,82 +45,55 @@ Kirigami.ApplicationWindow {
         }
     }
 
-    globalDrawer: Kirigami.GlobalDrawer {
-        title: "justLLAMA"
+    // Navigation destinations — order matches the StackLayout children below.
+    readonly property var navDestinations: [
+        { label: "Chat", icon: "chat-bubbles" },
+        { label: "Models", icon: "folder-games" },
+        { label: "Cloud Models", icon: "folder-cloud" },
+        { label: "RAG", icon: "folder-documents" },
+        { label: "Memory", icon: "user-group-properties" },
+        { label: "Settings", icon: "configure" },
+        { label: "Images", icon: "image-x-generic" },
+        { label: "Videos", icon: "video-display" },
+        { label: "API", icon: "network-server" },
+        { label: "Skills / MCP", icon: "configure-plugins" }
+    ]
 
-        actions: [
-            Kirigami.Action {
-                text: "Chat"
-                icon.name: "chat-bubbles"
-                onTriggered: mainStack.currentIndex = 0
-            },
-            Kirigami.Action {
-                text: "Models"
-                icon.name: "folder-games"
-                onTriggered: mainStack.currentIndex = 1
-            },
-            Kirigami.Action {
-                text: "Cloud Models"
-                icon.name: "folder-cloud"
-                onTriggered: mainStack.currentIndex = 2
-            },
-            Kirigami.Action {
-                text: "RAG"
-                icon.name: "folder-documents"
-                onTriggered: mainStack.currentIndex = 3
-            },
-            Kirigami.Action {
-                text: "Memory"
-                icon.name: "user-group-properties"
-                onTriggered: mainStack.currentIndex = 4
-            },
-            Kirigami.Action {
-                text: "Settings"
-                icon.name: "configure"
-                onTriggered: mainStack.currentIndex = 5
-            },
-            Kirigami.Action {
-                text: "Images"
-                icon.name: "image-x-generic"
-                onTriggered: mainStack.currentIndex = 6
-            },
-            Kirigami.Action {
-                text: "Videos"
-                icon.name: "video-display"
-                onTriggered: mainStack.currentIndex = 7
-            },
-            Kirigami.Action {
-                text: "API"
-                icon.name: "network-server"
-                onTriggered: mainStack.currentIndex = 8
-            },
-
-            Kirigami.Action {
-                text: "Skills / MCP"
-                icon.name: "configure-plugins"
-                onTriggered: mainStack.currentIndex = 9
-            }
-        ]
-    }
-
-    contextDrawer: Kirigami.ContextDrawer {
-        id: contextDrawer
-    }
-    // Top navigation toolbar
+    // Top navigation toolbar — icon-only buttons with tooltips, plus the
+    // active section title (compensates for the missing page-title chrome).
     header: ToolBar {
         RowLayout {
             anchors.fill: parent
+            spacing: Kirigami.Units.smallSpacing
 
             Repeater {
-                model: ["Chat", "Models", "Cloud Models", "RAG", "Memory", "Settings", "Images", "Videos", "API", "Skills / MCP"]
+                model: root.navDestinations
                 ToolButton {
-                    required property string modelData
+                    required property var modelData
                     required property int index
-                    text: modelData
+                    display: AbstractButton.IconOnly
+                    icon.name: modelData.icon
                     checked: mainStack.currentIndex === index
                     onClicked: mainStack.currentIndex = index
-                    Layout.fillWidth: true
+                    ToolTip.visible: hovered
+                    ToolTip.text: modelData.label
                 }
+            }
+
+            Kirigami.Separator {
+                Layout.fillHeight: true
+                Layout.topMargin: Kirigami.Units.smallSpacing
+                Layout.bottomMargin: Kirigami.Units.smallSpacing
+            }
+
+            Item { Layout.fillWidth: true }
+
+            Label {
+                text: root.navDestinations[mainStack.currentIndex].label
+                font.bold: true
+                color: Kirigami.Theme.highlightColor
+                elide: Text.ElideRight
+                Layout.rightMargin: Kirigami.Units.smallSpacing
             }
         }
     }

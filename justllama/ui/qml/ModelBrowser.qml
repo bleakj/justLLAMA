@@ -24,24 +24,18 @@ Kirigami.Page {
         anchors.margins: Kirigami.Units.largeSpacing
 
         // Header
-        RowLayout {
-            Layout.fillWidth: true
-
-            Label {
-                text: "Local Models"
-                font.bold: true
-                font.pointSize: 16
-            }
-
-            Item { Layout.fillWidth: true }
+        SectionHeader {
+            title: "Local Models"
 
             Button {
-                text: "🔄 Refresh"
+                text: "Refresh"
+                icon.name: "view-refresh"
                 onClicked: refreshModels()
             }
 
             Button {
-                text: "📥 Download"
+                text: "Download"
+                icon.name: "download"
                 onClicked: downloadDialog.open()
             }
         }
@@ -70,6 +64,7 @@ Kirigami.Page {
             model: models
 
             delegate: Kirigami.AbstractCard {
+                id: modelDelegate
                 width: modelList.width
                 property bool isSelected: modelData.path === selectedModel
                 property bool isHovered: hovered
@@ -115,7 +110,7 @@ Kirigami.Page {
                         }
                         // Expand/collapse indicator
                         Label {
-                            text: parent.parent.expanded ? "▼" : "▶"
+                            text: modelDelegate.expanded ? "▼" : "▶"
                             color: Kirigami.Theme.disabledTextColor
                             font.pointSize: 8
                         }
@@ -128,7 +123,7 @@ Kirigami.Page {
 
                         Button {
                             Layout.fillWidth: true
-                            text: isSelected ? "✓ Active" : "▶ Load"
+                            text: isSelected ? "Active" : "Load"
                             icon.name: isSelected ? "dialog-ok" : "go-next"
                             onClicked: {
                                 if (!isSelected) showPreLoadDialog(modelData.path, modelData.name)
@@ -148,7 +143,7 @@ Kirigami.Page {
                     ColumnLayout {
                         Layout.fillWidth: true
                         Layout.topMargin: Kirigami.Units.smallSpacing
-                        visible: parent.parent.expanded
+                        visible: modelDelegate.expanded
                         spacing: Kirigami.Units.smallSpacing
 
                         Kirigami.Separator {
@@ -188,17 +183,29 @@ Kirigami.Page {
                         }
 
                         // VRAM warning
-                        Label {
+                        RowLayout {
+                            id: vramWarning
                             property bool fitsInVRAM: modelData.size_gb <= modelBrowser.safe_vram_gb
                             property bool fitsInTotalSafe: modelData.size_gb <= (modelBrowser.safe_vram_gb + modelBrowser.safe_ram_gb)
 
                             visible: !fitsInVRAM
                             Layout.fillWidth: true
-                            wrapMode: Text.Wrap
-                            text: !fitsInTotalSafe ? "⚠ Exceeds safe memory (OOM crash risk)" : "⚠ Exceeds VRAM (will spill to system RAM)"
-                            color: !fitsInTotalSafe ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.neutralTextColor
-                            font.italic: true
-                            font.pointSize: 9
+                            spacing: Kirigami.Units.smallSpacing
+
+                            Kirigami.Icon {
+                                source: "data-warning"
+                                color: !vramWarning.fitsInTotalSafe ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.neutralTextColor
+                                Layout.preferredWidth: Kirigami.Units.iconSizes.small
+                                Layout.preferredHeight: Kirigami.Units.iconSizes.small
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.Wrap
+                                text: !vramWarning.fitsInTotalSafe ? "Exceeds safe memory (OOM crash risk)" : "Exceeds VRAM (will spill to system RAM)"
+                                color: !vramWarning.fitsInTotalSafe ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.neutralTextColor
+                                font.italic: true
+                                font.pointSize: 9
+                            }
                         }
 
                         // Modified date
@@ -209,10 +216,13 @@ Kirigami.Page {
                         }
                     }
 
-                    // MouseArea for expand/collapse
+                    // MouseArea for expand/collapse — uses Layout fill instead of
+                    // anchors because this MouseArea is a layout-managed child of
+                    // the contentItem ColumnLayout.
                     MouseArea {
-                        anchors.fill: parent
-                        onClicked: parent.parent.expanded = !parent.parent.expanded
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        onClicked: modelDelegate.expanded = !modelDelegate.expanded
                         // Pass through clicks to buttons
                         propagateComposedEvents: true
                     }
@@ -335,6 +345,7 @@ Kirigami.Page {
     property bool advancedSectionExpanded: false
     property bool moeSectionExpanded: false
     property bool draftSectionExpanded: false
+    property bool visionSectionExpanded: false
     property bool lowLevelSectionExpanded: false
 
     // Reusable collapsible section component
@@ -673,10 +684,27 @@ Kirigami.Page {
                     visible: draftSectionExpanded
     
                     Label { text: "Draft Model:" }
-                    TextField {
-                        id: optDraftField
-                        placeholderText: "path to draft model"
+                    RowLayout {
                         Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+                        TextField {
+                            id: optDraftField
+                            placeholderText: "path to draft model"
+                            Layout.fillWidth: true
+                        }
+                        Button {
+                            text: "Auto-detect MTP"
+                            icon.name: "folder-documents"
+                            onClicked: {
+                                var found = modelBrowser.find_mtp_draft(editingModelPath)
+                                if (found) {
+                                    optDraftField.text = found
+                                    optSpecTypeCombo.currentIndex = 1 // draft-mtp
+                                } else {
+                                    toast.show("No MTP draft model found in model directory", "warning")
+                                }
+                            }
+                        }
                     }
     
                     Label {
@@ -714,10 +742,90 @@ Kirigami.Page {
                         visible: optDraftField.text.trim().length > 0
                         Layout.fillWidth: true
                     }
+
+                    Label {
+                        text: "Spec Type:"
+                        visible: optDraftField.text.trim().length > 0
+                    }
+                    ComboBox {
+                        id: optSpecTypeCombo
+                        model: ["auto", "draft-mtp", "draft-simple", "draft-eagle3", "none"]
+                        visible: optDraftField.text.trim().length > 0
+                        Layout.fillWidth: true
+                    }
                 }
             }
     
-            // Section 6: Low-Level (collapsible)
+            // Section 6: Vision / Multimodal (collapsible)
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 0
+    
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 32
+                    color: Kirigami.Theme.alternateBackgroundColor || Qt.rgba(0.5, 0.5, 0.5, 0.1)
+                    radius: Kirigami.Units.cornerRadius / 2
+    
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Kirigami.Units.smallSpacing
+                        anchors.rightMargin: Kirigami.Units.smallSpacing
+    
+                        Label {
+                            text: visionSectionExpanded ? "▼" : "▶"
+                            font.pointSize: 8
+                            color: Kirigami.Theme.disabledTextColor
+                        }
+                        Label {
+                            text: "Vision / Multimodal"
+                            font.bold: true
+                        }
+                        Item { Layout.fillWidth: true }
+                        MouseArea {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            onClicked: visionSectionExpanded = !visionSectionExpanded
+                        }
+                    }
+                }
+    
+                GridLayout {
+                    columns: 2
+                    rowSpacing: Kirigami.Units.smallSpacing
+                    columnSpacing: Kirigami.Units.largeSpacing
+                    Layout.fillWidth: true
+                    Layout.leftMargin: Kirigami.Units.largeSpacing
+                    Layout.rightMargin: Kirigami.Units.smallSpacing
+                    Layout.topMargin: Kirigami.Units.smallSpacing
+                    visible: visionSectionExpanded
+    
+                    Label { text: "MMProj File:" }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+                        TextField {
+                            id: optMmprojField
+                            placeholderText: "path to multimodal projector (mmproj)"
+                            Layout.fillWidth: true
+                        }
+                        Button {
+                            text: "Auto-detect"
+                            icon.name: "image-x-generic"
+                            onClicked: {
+                                var found = modelBrowser.find_mmproj(editingModelPath)
+                                if (found) {
+                                    optMmprojField.text = found
+                                } else {
+                                    toast.show("No mmproj file found in model directory", "warning")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+    
+            // Section 7: Low-Level (collapsible)
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 0
@@ -876,6 +984,10 @@ Kirigami.Page {
         optDraftNglSpin.value = profile.gpu_layers_draft !== undefined ? profile.gpu_layers_draft : 99
         optDraftMaxSpin.value = profile.draft_max !== undefined ? profile.draft_max : 0
         optDraftMinSpin.value = profile.draft_min !== undefined ? profile.draft_min : 0
+        var specType = profile.spec_type || "auto"
+        var specIdx = optSpecTypeCombo.model.indexOf(specType)
+        optSpecTypeCombo.currentIndex = specIdx >= 0 ? specIdx : 0
+        optMmprojField.text = profile.mmproj || ""
 
         optionsDialog.open()
     }
@@ -906,6 +1018,8 @@ Kirigami.Page {
             "gpu_layers_draft": optDraftNglSpin.value,
             "draft_max": optDraftMaxSpin.value,
             "draft_min": optDraftMinSpin.value,
+            "spec_type": optSpecTypeCombo.currentIndex === 0 ? "" : optSpecTypeCombo.currentText,
+            "mmproj": optMmprojField.text.trim(),
             "extra_args": optExtraField.text.trim()
         }
 

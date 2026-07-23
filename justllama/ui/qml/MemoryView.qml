@@ -29,16 +29,8 @@ Kirigami.Page {
         anchors.margins: Kirigami.Units.largeSpacing
 
         // Header
-        RowLayout {
-            Layout.fillWidth: true
-
-            Label {
-                text: "Memory Management"
-                font.bold: true
-                font.pointSize: 16
-            }
-
-            Item { Layout.fillWidth: true }
+        SectionHeader {
+            title: "Memory Management"
 
             Label {
                 text: "Enabled:"
@@ -50,26 +42,6 @@ Kirigami.Page {
                 onCheckedChanged: {
                     memoryManager.set_enabled(checked)
                     appSettings.set_bool("memory/enabled", checked)
-                }
-                indicator: Rectangle {
-                    implicitWidth: 48
-                    implicitHeight: 26
-                    x: parent.leftPadding
-                    y: parent.height / 2 - height / 2
-                    radius: 13
-                    color: parent.checked ? Kirigami.Theme.highlightColor : Kirigami.Theme.disabledTextColor
-
-                    Rectangle {
-                        x: parent.parent.checked ? parent.width - width - 2 : 2
-                        width: 22
-                        height: 22
-                        radius: 11
-                        color: "white"
-
-                        Behavior on x {
-                            NumberAnimation { duration: 150 }
-                        }
-                    }
                 }
             }
         }
@@ -111,7 +83,8 @@ Kirigami.Page {
             Item { Layout.fillWidth: true }
 
             Button {
-                text: "🔄 Refresh"
+                text: "Refresh"
+                icon.name: "view-refresh"
                 onClicked: refreshMemories()
             }
         }
@@ -141,8 +114,11 @@ Kirigami.Page {
                             color: Kirigami.Theme.disabledTextColor
                             font.pointSize: 10
                         }
-                        Button {
-                            text: "🗑️"
+                        ToolButton {
+                            icon.name: "edit-delete"
+                            display: AbstractButton.IconOnly
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Forget"
                             onClicked: forgetMemory(modelData.id)
                         }
                     }
@@ -176,12 +152,14 @@ Kirigami.Page {
             Layout.fillWidth: true
 
             Button {
-                text: "🧹 Clear Short-term"
+                text: "Clear Short-term"
+                icon.name: "edit-clear-history"
                 onClicked: memoryManager.clear_short_term()
             }
 
             Button {
-                text: "🗑️ Clear Long-term"
+                text: "Clear Long-term"
+                icon.name: "edit-delete"
                 onClicked: {
                     memoryManager.clear_long_term()
                     refreshMemories()
@@ -189,7 +167,8 @@ Kirigami.Page {
             }
 
             Button {
-                text: "💥 Clear All"
+                text: "Clear All"
+                icon.name: "edit-clear-all"
                 onClicked: {
                     memoryManager.clear_all()
                     refreshMemories()

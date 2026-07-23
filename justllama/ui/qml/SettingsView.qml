@@ -84,19 +84,8 @@ Kirigami.ScrollablePage {
         spacing: Kirigami.Units.largeSpacing
 
         // Branding header
-        Rectangle {
-            Layout.fillWidth: true
-            height: 48
-            radius: Kirigami.Units.cornerRadius
-            color: Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.1)
-
-            Label {
-                anchors.centerIn: parent
-                text: "⚙️ justLLAMA Settings"
-                font.bold: true
-                font.pointSize: 16
-                color: Kirigami.Theme.highlightColor
-            }
+        SectionHeader {
+            title: "Settings"
         }
 
         // Appearance Settings
@@ -480,30 +469,30 @@ Kirigami.ScrollablePage {
         }
 
         // RAG Settings
-        Rectangle {
+        Kirigami.AbstractCard {
             Layout.fillWidth: true
-            clip: true
-            radius: Kirigami.Units.cornerRadius
-            color: ragEnabledSwitch.checked
-                ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.15)
-                : Kirigami.Theme.backgroundColor
-            border.color: ragEnabledSwitch.checked
-                ? Kirigami.Theme.highlightColor
-                : safeBorderColor
-            border.width: ragEnabledSwitch.checked ? 2 : 1
 
-            Behavior on color { ColorAnimation { duration: 300 } }
-            Behavior on border.color { ColorAnimation { duration: 300 } }
+            background: Rectangle {
+                radius: Kirigami.Units.cornerRadius
+                color: ragEnabledSwitch.checked
+                    ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.15)
+                    : Kirigami.Theme.backgroundColor
+                border.color: ragEnabledSwitch.checked
+                    ? Kirigami.Theme.highlightColor
+                    : safeBorderColor
+                border.width: ragEnabledSwitch.checked ? 2 : 1
 
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: Kirigami.Units.largeSpacing
+                Behavior on color { ColorAnimation { duration: 300 } }
+                Behavior on border.color { ColorAnimation { duration: 300 } }
+            }
+
+            contentItem: ColumnLayout {
                 spacing: Kirigami.Units.smallSpacing
 
                 RowLayout {
                     Layout.fillWidth: true
                     Label {
-                        text: ragEnabledSwitch.checked ? "📚 RAG Enabled" : "RAG Settings"
+                        text: ragEnabledSwitch.checked ? "RAG Enabled" : "RAG Settings"
                         font.bold: true
                         font.pointSize: 14
                         color: ragEnabledSwitch.checked ? Kirigami.Theme.highlightColor : Kirigami.Theme.textColor
@@ -552,30 +541,30 @@ Kirigami.ScrollablePage {
         }
 
         // Memory Settings
-        Rectangle {
+        Kirigami.AbstractCard {
             Layout.fillWidth: true
-            clip: true
-            radius: Kirigami.Units.cornerRadius
-            color: memEnabledSwitch.checked
-                ? Qt.rgba(Kirigami.Theme.positiveTextColor.r, Kirigami.Theme.positiveTextColor.g, Kirigami.Theme.positiveTextColor.b, 0.15)
-                : Kirigami.Theme.backgroundColor
-            border.color: memEnabledSwitch.checked
-                ? Kirigami.Theme.positiveTextColor
-                : safeBorderColor
-            border.width: memEnabledSwitch.checked ? 2 : 1
 
-            Behavior on color { ColorAnimation { duration: 300 } }
-            Behavior on border.color { ColorAnimation { duration: 300 } }
+            background: Rectangle {
+                radius: Kirigami.Units.cornerRadius
+                color: memEnabledSwitch.checked
+                    ? Qt.rgba(Kirigami.Theme.positiveTextColor.r, Kirigami.Theme.positiveTextColor.g, Kirigami.Theme.positiveTextColor.b, 0.15)
+                    : Kirigami.Theme.backgroundColor
+                border.color: memEnabledSwitch.checked
+                    ? Kirigami.Theme.positiveTextColor
+                    : safeBorderColor
+                border.width: memEnabledSwitch.checked ? 2 : 1
 
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: Kirigami.Units.largeSpacing
+                Behavior on color { ColorAnimation { duration: 300 } }
+                Behavior on border.color { ColorAnimation { duration: 300 } }
+            }
+
+            contentItem: ColumnLayout {
                 spacing: Kirigami.Units.smallSpacing
 
                 RowLayout {
                     Layout.fillWidth: true
                     Label {
-                        text: memEnabledSwitch.checked ? "🧠 Memory Enabled" : "Memory Settings"
+                        text: memEnabledSwitch.checked ? "Memory Enabled" : "Memory Settings"
                         font.bold: true
                         font.pointSize: 14
                         color: memEnabledSwitch.checked ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.textColor
@@ -603,30 +592,30 @@ Kirigami.ScrollablePage {
         }
 
         // Voice Input Settings
-        Rectangle {
+        Kirigami.AbstractCard {
             Layout.fillWidth: true
-            clip: true
-            radius: Kirigami.Units.cornerRadius
-            color: voiceEnabledSwitch.checked
-                ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.15)
-                : Kirigami.Theme.backgroundColor
-            border.color: voiceEnabledSwitch.checked
-                ? Kirigami.Theme.highlightColor
-                : safeBorderColor
-            border.width: voiceEnabledSwitch.checked ? 2 : 1
 
-            Behavior on color { ColorAnimation { duration: 300 } }
-            Behavior on border.color { ColorAnimation { duration: 300 } }
+            background: Rectangle {
+                radius: Kirigami.Units.cornerRadius
+                color: voiceEnabledSwitch.checked
+                    ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.15)
+                    : Kirigami.Theme.backgroundColor
+                border.color: voiceEnabledSwitch.checked
+                    ? Kirigami.Theme.highlightColor
+                    : safeBorderColor
+                border.width: voiceEnabledSwitch.checked ? 2 : 1
 
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: Kirigami.Units.largeSpacing
+                Behavior on color { ColorAnimation { duration: 300 } }
+                Behavior on border.color { ColorAnimation { duration: 300 } }
+            }
+
+            contentItem: ColumnLayout {
                 spacing: Kirigami.Units.smallSpacing
 
                 RowLayout {
                     Layout.fillWidth: true
                     Label {
-                        text: voiceEnabledSwitch.checked ? "🎙️ Voice Input Enabled" : "Voice Input Settings"
+                        text: voiceEnabledSwitch.checked ? "Voice Input Enabled" : "Voice Input Settings"
                         font.bold: true
                         font.pointSize: 14
                         color: voiceEnabledSwitch.checked ? Kirigami.Theme.highlightColor : Kirigami.Theme.textColor
@@ -714,7 +703,8 @@ Kirigami.ScrollablePage {
                     Item { Layout.fillWidth: true }
                     
                     Button {
-                        text: showServerLog ? "▾ Log" : "▸ Log"
+                        text: "Log"
+                        icon.name: showServerLog ? "go-down" : "go-next"
                         flat: true
                         onClicked: showServerLog = !showServerLog
                     }

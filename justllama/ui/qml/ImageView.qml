@@ -127,9 +127,11 @@ Kirigami.ScrollablePage {
                         }
                     }
 
-                    Button {
-                        text: "🔄"
-                        implicitWidth: 36
+                    ToolButton {
+                        icon.name: "view-refresh"
+                        display: AbstractButton.IconOnly
+                        ToolTip.visible: hovered
+                        ToolTip.text: "Refresh"
                         onClicked: {
                             imagePage.models = imageGenManager.available_models()
                         }
@@ -189,7 +191,8 @@ Kirigami.ScrollablePage {
 
                     Button {
                         id: generateBtn
-                        text: isGenerating ? "Generating..." : "✨ Generate"
+                        text: isGenerating ? "Generating..." : "Generate"
+                        icon.name: "media-playback-start"
                         enabled: !isGenerating && promptField.text.trim().length > 0 && selectedModel.length > 0
                         onClicked: generateImage()
                     }
@@ -221,7 +224,7 @@ Kirigami.ScrollablePage {
 
             Image {
                 anchors.fill: parent
-                anchors.margins: 4
+                anchors.margins: Kirigami.Units.smallSpacing
                 source: previewPath.length > 0 ? "file://" + previewPath : ""
                 fillMode: Image.PreserveAspectFit
                 visible: previewPath.length > 0
@@ -282,13 +285,13 @@ Kirigami.ScrollablePage {
                         width: 120
                         height: 120
                         color: safeAltBgColor
-                        radius: 4
+                        radius: Kirigami.Units.cornerRadius
                         border.color: safeBorderColor
                         border.width: 1
 
                         Image {
                             anchors.fill: parent
-                            anchors.margins: 2
+                            anchors.margins: Kirigami.Units.smallSpacing
                             source: "file://" + modelData
                             fillMode: Image.PreserveAspectFit
 

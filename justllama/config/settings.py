@@ -234,6 +234,8 @@ class AppSettings(QObject):
             "gpu_layers_draft": self.get_int("server/gpu_layers_draft"),
             "draft_max": self.get_int("server/draft_max"),
             "draft_min": self.get_int("server/draft_min"),
+            "spec_type": self.get_string("server/spec_type"),
+            "mmproj": self.get_string("server/mmproj"),
             "extra_args": [],
         }
 

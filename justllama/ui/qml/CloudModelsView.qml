@@ -116,6 +116,8 @@ Kirigami.Page {
                             Button {
                                 text: "S1"
                                 implicitWidth: 36
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Assign to Council Slot 1"
                                 onClicked: {
                                     var result = externalModels.select_model("nvidia", 1, modelData);
                                     if (result !== "") {
@@ -128,6 +130,8 @@ Kirigami.Page {
                             Button {
                                 text: "S2"
                                 implicitWidth: 36
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Assign to Council Slot 2"
                                 onClicked: {
                                     var result = externalModels.select_model("nvidia", 2, modelData);
                                     if (result !== "") {
@@ -140,6 +144,8 @@ Kirigami.Page {
                             Button {
                                 text: "S3"
                                 implicitWidth: 36
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Assign to Council Slot 3"
                                 onClicked: {
                                     var result = externalModels.select_model("nvidia", 3, modelData);
                                     if (result !== "") {
@@ -236,6 +242,8 @@ Kirigami.Page {
                             Button {
                                 text: "S1"
                                 implicitWidth: 36
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Assign to Council Slot 1"
                                 onClicked: {
                                     var result = externalModels.select_model("openrouter", 1, modelData);
                                     if (result !== "") {
@@ -248,6 +256,8 @@ Kirigami.Page {
                             Button {
                                 text: "S2"
                                 implicitWidth: 36
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Assign to Council Slot 2"
                                 onClicked: {
                                     var result = externalModels.select_model("openrouter", 2, modelData);
                                     if (result !== "") {
@@ -260,6 +270,8 @@ Kirigami.Page {
                             Button {
                                 text: "S3"
                                 implicitWidth: 36
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Assign to Council Slot 3"
                                 onClicked: {
                                     var result = externalModels.select_model("openrouter", 3, modelData);
                                     if (result !== "") {
@@ -356,6 +368,8 @@ Kirigami.Page {
                             Button {
                                 text: "S1"
                                 implicitWidth: 36
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Assign to Council Slot 1"
                                 onClicked: {
                                     var result = externalModels.select_model("opencode", 1, modelData);
                                     if (result !== "") {
@@ -368,6 +382,8 @@ Kirigami.Page {
                             Button {
                                 text: "S2"
                                 implicitWidth: 36
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Assign to Council Slot 2"
                                 onClicked: {
                                     var result = externalModels.select_model("opencode", 2, modelData);
                                     if (result !== "") {
@@ -380,6 +396,8 @@ Kirigami.Page {
                             Button {
                                 text: "S3"
                                 implicitWidth: 36
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Assign to Council Slot 3"
                                 onClicked: {
                                     var result = externalModels.select_model("opencode", 3, modelData);
                                     if (result !== "") {
@@ -476,6 +494,8 @@ Kirigami.Page {
                             Button {
                                 text: "S1"
                                 implicitWidth: 36
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Assign to Council Slot 1"
                                 onClicked: {
                                     var result = externalModels.select_model("gemini", 1, modelData);
                                     if (result !== "") {
@@ -488,6 +508,8 @@ Kirigami.Page {
                             Button {
                                 text: "S2"
                                 implicitWidth: 36
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Assign to Council Slot 2"
                                 onClicked: {
                                     var result = externalModels.select_model("gemini", 2, modelData);
                                     if (result !== "") {
@@ -500,6 +522,8 @@ Kirigami.Page {
                             Button {
                                 text: "S3"
                                 implicitWidth: 36
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Assign to Council Slot 3"
                                 onClicked: {
                                     var result = externalModels.select_model("gemini", 3, modelData);
                                     if (result !== "") {
@@ -596,6 +620,8 @@ Kirigami.Page {
                             Button {
                                 text: "S1"
                                 implicitWidth: 36
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Assign to Council Slot 1"
                                 onClicked: {
                                     var result = externalModels.select_model("kilocode", 1, modelData);
                                     if (result !== "") {
@@ -608,6 +634,8 @@ Kirigami.Page {
                             Button {
                                 text: "S2"
                                 implicitWidth: 36
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Assign to Council Slot 2"
                                 onClicked: {
                                     var result = externalModels.select_model("kilocode", 2, modelData);
                                     if (result !== "") {
@@ -620,6 +648,8 @@ Kirigami.Page {
                             Button {
                                 text: "S3"
                                 implicitWidth: 36
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Assign to Council Slot 3"
                                 onClicked: {
                                     var result = externalModels.select_model("kilocode", 3, modelData);
                                     if (result !== "") {

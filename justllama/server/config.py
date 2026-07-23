@@ -47,6 +47,11 @@ class ServerConfig:
     gpu_layers_draft: int = 99
     draft_max: int = 0
     draft_min: int = 0
+    # Speculative decoding type (e.g., "draft-mtp", "draft-simple", "draft-eagle3").
+    # Only emitted when model_draft is set and spec_type is non-empty.
+    spec_type: str = ""
+    # Multimodal projector file path for vision models. Only emitted when set.
+    mmproj: str = ""
     extra_args: list[str] = field(default_factory=list)
 
     def validate(self) -> list[str]:
@@ -141,6 +146,13 @@ class ServerConfig:
             draft_min = _as_int(self.draft_min)
             if draft_min > 0:
                 cmd.extend(["--spec-draft-n-min", str(draft_min)])
+            # Speculative decoding type (e.g., draft-mtp for MTP models)
+            if self.spec_type:
+                cmd.extend(["--spec-type", str(self.spec_type)])
+
+        # Multimodal projector for vision models
+        if self.mmproj:
+            cmd.extend(["--mmproj", str(self.mmproj)])
 
         if isinstance(self.extra_args, str):
             cmd.extend(self.extra_args.split())

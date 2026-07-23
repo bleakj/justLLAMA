@@ -25,16 +25,8 @@ Kirigami.Page {
         anchors.margins: Kirigami.Units.largeSpacing
 
         // Header
-        RowLayout {
-            Layout.fillWidth: true
-
-            Label {
-                text: "Retrieval-Augmented Generation"
-                font.bold: true
-                font.pointSize: 16
-            }
-
-            Item { Layout.fillWidth: true }
+        SectionHeader {
+            title: "Retrieval-Augmented Generation"
 
             Label {
                 text: "Enabled:"
@@ -44,26 +36,6 @@ Kirigami.Page {
             Switch {
                 checked: ragPage.isRagEnabled
                 onCheckedChanged: appSettings.set_bool("rag/enabled", checked)
-                indicator: Rectangle {
-                    implicitWidth: 48
-                    implicitHeight: 26
-                    x: parent.leftPadding
-                    y: parent.height / 2 - height / 2
-                    radius: 13
-                    color: parent.checked ? Kirigami.Theme.highlightColor : Kirigami.Theme.disabledTextColor
-
-                    Rectangle {
-                        x: parent.parent.checked ? parent.width - width - 2 : 2
-                        width: 22
-                        height: 22
-                        radius: 11
-                        color: "white"
-
-                        Behavior on x {
-                            NumberAnimation { duration: 150 }
-                        }
-                    }
-                }
             }
         }
 
@@ -85,7 +57,8 @@ Kirigami.Page {
                 }
 
                 Button {
-                    text: "📁 Select Files"
+                    text: "Select Files"
+                    icon.name: "document-open"
                     onClicked: fileDialog.open()
                     Layout.fillWidth: true
                 }
@@ -123,8 +96,11 @@ Kirigami.Page {
                         }
                     }
 
-                    Button {
-                        text: "🗑️"
+                    ToolButton {
+                        icon.name: "edit-delete"
+                        display: AbstractButton.IconOnly
+                        ToolTip.visible: hovered
+                        ToolTip.text: "Remove"
                         onClicked: removeDocument(index)
                     }
                 }
@@ -151,7 +127,8 @@ Kirigami.Page {
                 }
                 Item { Layout.fillWidth: true }
                 Button {
-                    text: "🧹 Clear All"
+                    text: "Clear All"
+                    icon.name: "edit-clear-all"
                     onClicked: clearAll()
                 }
             }

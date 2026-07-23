@@ -126,9 +126,11 @@ Kirigami.ScrollablePage {
                         }
                     }
 
-                    Button {
-                        text: "🔄"
-                        implicitWidth: 36
+                    ToolButton {
+                        icon.name: "view-refresh"
+                        display: AbstractButton.IconOnly
+                        ToolTip.visible: hovered
+                        ToolTip.text: "Refresh"
                         onClicked: {
                             videoPage.models = videoGenManager.available_models()
                         }
@@ -205,7 +207,8 @@ Kirigami.ScrollablePage {
 
                     Button {
                         id: generateBtn
-                        text: isGenerating ? "Generating..." : "🎬 Generate Video"
+                        text: isGenerating ? "Generating..." : "Generate Video"
+                        icon.name: "media-playback-start"
                         enabled: !isGenerating && promptField.text.trim().length > 0 && selectedModel.length > 0
                         onClicked: generateVideo()
                     }
@@ -240,7 +243,7 @@ Kirigami.ScrollablePage {
 
             AnimatedImage {
                 anchors.fill: parent
-                anchors.margins: 4
+                anchors.margins: Kirigami.Units.smallSpacing
                 source: previewPath.length > 0 ? "file://" + previewPath : ""
                 fillMode: Image.PreserveAspectFit
                 playing: true
@@ -250,7 +253,7 @@ Kirigami.ScrollablePage {
             // Fallback: show static image for non-WEBP formats (e.g. MP4)
             Image {
                 anchors.fill: parent
-                anchors.margins: 4
+                anchors.margins: Kirigami.Units.smallSpacing
                 source: previewPath.length > 0 ? "file://" + previewPath : ""
                 fillMode: Image.PreserveAspectFit
                 visible: previewPath.length > 0 && !parent.isAnimated
@@ -311,13 +314,13 @@ Kirigami.ScrollablePage {
                         width: 120
                         height: 120
                         color: safeAltBgColor
-                        radius: 4
+                        radius: Kirigami.Units.cornerRadius
                         border.color: safeBorderColor
                         border.width: 1
 
                         Image {
                             anchors.fill: parent
-                            anchors.margins: 2
+                            anchors.margins: Kirigami.Units.smallSpacing
                             source: "file://" + modelData
                             fillMode: Image.PreserveAspectFit
 

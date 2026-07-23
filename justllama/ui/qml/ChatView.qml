@@ -301,8 +301,8 @@ Kirigami.Page {
 
                     delegate: ColumnLayout {
                         width: messageList.width - Kirigami.Units.smallSpacing * 2
-                        spacing: 4
-                        Layout.margins: 4
+                        spacing: Kirigami.Units.smallSpacing
+                        Layout.margins: Kirigami.Units.smallSpacing
 
                         // Message bubble tile
                         Rectangle {
@@ -432,21 +432,37 @@ Kirigami.Page {
             }
 
             // RAG / Memory indicators
-            Label {
+            RowLayout {
                 id: ragIndicator
                 visible: false
-                text: "📚 RAG context active"
-                color: safeHighlightColor
-                font.italic: true
+                spacing: Kirigami.Units.smallSpacing
+                Kirigami.Icon {
+                    source: "folder-documents"
+                    Layout.preferredWidth: Kirigami.Units.iconSizes.small
+                    Layout.preferredHeight: Kirigami.Units.iconSizes.small
+                }
+                Label {
+                    text: "RAG context active"
+                    color: safeHighlightColor
+                    font.italic: true
+                }
             }
-            Label {
+            RowLayout {
                 id: memoryIndicator
-                visible: appSettings.get_bool("memory/enabled")
+                visible: appSettings.get_bool("memory/enabled") && indicatorText !== ""
                 property string indicatorText: ""
-                text: indicatorText ? "🧠 Memory active (" + indicatorText + ")" : ""
-                color: safeHighlightColor
-                font.italic: true
+                spacing: Kirigami.Units.smallSpacing
                 Component.onCompleted: refreshIndicator()
+                Kirigami.Icon {
+                    source: "user-group-properties"
+                    Layout.preferredWidth: Kirigami.Units.iconSizes.small
+                    Layout.preferredHeight: Kirigami.Units.iconSizes.small
+                }
+                Label {
+                    text: "Memory active (" + memoryIndicator.indicatorText + ")"
+                    color: safeHighlightColor
+                    font.italic: true
+                }
             }
             // Generation settings toggle
             RowLayout {
@@ -846,7 +862,8 @@ Kirigami.Page {
                     }
 
                     Button {
-                        text: isGenerating ? "⏹️ Stop" : "▶️ Send"
+                        text: isGenerating ? "Stop" : "Send"
+                        icon.name: isGenerating ? "media-playback-stop" : "document-send"
                         enabled: inputField.text.length > 0 || isGenerating
                         onClicked: {
                             if (isGenerating) { stopGeneration() }
@@ -868,7 +885,7 @@ Kirigami.Page {
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: Kirigami.Units.largeSpacing
-                spacing: Kirigami.Units.mediumSpacing
+                spacing: Kirigami.Units.largeSpacing
 
                 // Header
                 Label {
@@ -955,11 +972,12 @@ Kirigami.Page {
                     Layout.alignment: Qt.AlignHCenter
                 }
 
-                Rectangle { Layout.fillWidth: true; height: 1; color: chatPage.safeBorderColor }
+                Kirigami.Separator { Layout.fillWidth: true }
 
                 // Action buttons
                 Button {
-                    text: "🗑️ Clear Context"
+                    text: "Clear Context"
+                    icon.name: "edit-clear-all"
                     Layout.fillWidth: true
                     onClicked: {
                         chatPage.messageHistory = []
@@ -970,14 +988,16 @@ Kirigami.Page {
                 }
 
                 Button {
-                    text: "📦 Compact"
+                    text: "Compact"
+                    icon.name: "archive-insert"
                     Layout.fillWidth: true
                     enabled: chatPage.contextPercent > 30
                     onClicked: compactContext()
                 }
 
                 Button {
-                    text: chatPage.showTerminal ? "💻 Hide Terminal" : "💻 Show Terminal"
+                    text: chatPage.showTerminal ? "Hide Terminal" : "Show Terminal"
+                    icon.name: "utilities-terminal"
                     Layout.fillWidth: true
                     onClicked: {
                         chatPage.showTerminal = !chatPage.showTerminal
@@ -988,7 +1008,8 @@ Kirigami.Page {
                 }
 
                 Button {
-                    text: "⏏ Eject Model"
+                    text: "Eject Model"
+                    icon.name: "media-eject"
                     Layout.fillWidth: true
                     visible: root.serverRunning
                     onClicked: ejectConfirmation.open()
@@ -1074,7 +1095,7 @@ Kirigami.Page {
                 Item { Layout.fillHeight: true }
 
                 // Model info
-                Rectangle { Layout.fillWidth: true; height: 1; color: chatPage.safeBorderColor }
+                Kirigami.Separator { Layout.fillWidth: true }
                 Label {
                     text: modeSelector.currentIndex === 3 ? "Active Models" : "Model"
                     font.bold: true
@@ -1091,7 +1112,7 @@ Kirigami.Page {
                 }
 
                 // Server status
-                Rectangle { Layout.fillWidth: true; height: 1; color: chatPage.safeBorderColor }
+                Kirigami.Separator { Layout.fillWidth: true }
                 Label {
                     text: root.serverRunning ? "● Server online" : "● Server offline"
                     font.pointSize: 10
