@@ -37,7 +37,9 @@ def _model_paths() -> tuple[str, str]:
 class TTSWorker(QThread):
     """Background worker that loads Kokoro and synthesizes speech to a WAV."""
 
-    finished = Signal(str, object)  # (wav_path, loaded_model_instance)
+    # Named distinctly so it does NOT shadow QThread's built-in no-arg
+    # ``finished`` signal (which stays intact for lifecycle management).
+    synthesis_finished = Signal(str, object)  # (wav_path, loaded_model_instance)
     error = Signal(str)
 
     def __init__(self, text: str, voice: str, cached_model=None, parent=None):
@@ -45,12 +47,13 @@ class TTSWorker(QThread):
         self._text = text
         self._voice = voice
         self._cached_model = cached_model
+        self._req_id = 0  # set by the manager to detect superseded results
 
     def run(self):
         try:
             model = self._cached_model or self._load_model()
             wav_path = self._synthesize(model, self._text, self._voice)
-            self.finished.emit(wav_path, model)
+            self.synthesis_finished.emit(wav_path, model)
         except ImportError:
             self.error.emit(
                 "Text-to-speech is not installed. Install it with: "
@@ -80,11 +83,19 @@ class TTSWorker(QThread):
     def _synthesize(self, model, text: str, voice: str) -> str:
         """Synthesize ``text`` and write a 16-bit PCM WAV; return its path."""
         samples, sample_rate = model.create(text, voice=voice, speed=1.0, lang="en-us")
-        # Convert float samples in [-1, 1] to little-endian int16 PCM.
-        pcm = bytearray()
-        for s in samples:
-            v = int(max(-1.0, min(1.0, float(s))) * 32767)
-            pcm += int(v).to_bytes(2, "little", signed=True)
+        # Convert float samples in [-1, 1] to little-endian int16 PCM. Use
+        # NumPy when available (Kokoro pulls it in) for a fast vectorized path,
+        # falling back to a pure-Python loop otherwise.
+        try:
+            import numpy as np
+            arr = np.clip(np.asarray(samples, dtype=np.float32), -1.0, 1.0)
+            pcm = (arr * 32767.0).astype("<i2").tobytes()
+        except Exception:
+            pcm = bytearray()
+            for s in samples:
+                v = int(max(-1.0, min(1.0, float(s))) * 32767)
+                pcm += int(v).to_bytes(2, "little", signed=True)
+            pcm = bytes(pcm)
 
         fd, wav_path = tempfile.mkstemp(suffix=".wav", prefix="justllama_tts_")
         os.close(fd)
@@ -92,7 +103,7 @@ class TTSWorker(QThread):
             wf.setnchannels(1)
             wf.setsampwidth(2)
             wf.setframerate(int(sample_rate))
-            wf.writeframes(bytes(pcm))
+            wf.writeframes(pcm)
         return wav_path
 
 
@@ -108,6 +119,7 @@ class TTSManager(QObject):
         self._settings = settings
         self._model_instance = None
         self._worker = None
+        self._active_id = 0  # bumped on each speak()/stop() to supersede results
         self._is_speaking = False
         self._player = None
         self._audio_output = None
@@ -140,15 +152,24 @@ class TTSManager(QObject):
         self._is_speaking = True
         self.speaking_changed.emit(True)
 
+        self._active_id += 1
         voice = self._settings.tts_voice or "af_sky"
-        self._worker = TTSWorker(text, voice, cached_model=self._model_instance, parent=self)
-        self._worker.finished.connect(self._on_synth_finished)
-        self._worker.error.connect(self._on_synth_error)
-        self._worker.start()
+        worker = TTSWorker(text, voice, cached_model=self._model_instance, parent=self)
+        worker._req_id = self._active_id
+        worker.synthesis_finished.connect(self._on_synth_finished)
+        worker.error.connect(self._on_synth_error)
+        # Release the worker (and its model reference) once it finishes so dead
+        # workers don't accumulate and pin the Kokoro model in memory.
+        worker.synthesis_finished.connect(worker.deleteLater)
+        worker.error.connect(worker.deleteLater)
+        self._worker = worker
+        worker.start()
 
     @Slot()
     def stop(self):
-        """Stop any current playback."""
+        """Stop any current playback and supersede any in-flight synthesis."""
+        # Bumping the id makes any pending worker result be discarded.
+        self._active_id += 1
         if self._player is not None:
             try:
                 self._player.stop()
@@ -163,6 +184,16 @@ class TTSManager(QObject):
     def unload_model(self):
         """Release the cached Kokoro model to free memory."""
         self.stop()
+        # Join any still-running synthesis so we never destroy a live QThread
+        # (e.g. when quitting mid-synthesis).
+        worker = self._worker
+        if worker is not None:
+            try:
+                if worker.isRunning():
+                    worker.wait(3000)
+            except Exception:
+                pass
+        self._worker = None
         if self._model_instance is not None:
             logger.info("TTS: unloading Kokoro model from memory.")
             self._model_instance = None
@@ -170,6 +201,17 @@ class TTSManager(QObject):
     # --- Private helpers ---
 
     def _on_synth_finished(self, wav_path: str, model):
+        # Discard results from a superseded request (a newer speak()/stop()
+        # invalidated this one); clean up its temp file.
+        worker = self.sender()
+        if worker is not None and getattr(worker, "_req_id", None) != self._active_id:
+            try:
+                p = Path(wav_path)
+                if p.exists():
+                    p.unlink()
+            except Exception:
+                pass
+            return
         self._model_instance = model
         self._current_wav = wav_path
         try:

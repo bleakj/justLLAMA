@@ -467,3 +467,23 @@ class TestDetectMmproj:
         model = tmp_path / "model.gguf"
         model.write_bytes(b"x")
         assert _detect_mmproj(str(model)) == ""
+
+    def test_no_pairing_of_unrelated_projector_in_shared_dir(self, tmp_path):
+        """A text-only model must NOT get an unrelated projector attached when a
+        shared directory holds multiple models."""
+        from justllama.models.profiles import _detect_mmproj
+        (tmp_path / "qwen3-8b.gguf").write_bytes(b"x")
+        (tmp_path / "other-model.gguf").write_bytes(b"x")
+        (tmp_path / "llava-mmproj-f16.gguf").write_bytes(b"x")
+        assert _detect_mmproj(str(tmp_path / "qwen3-8b.gguf")) == ""
+
+    def test_pairs_name_correlated_projector_in_shared_dir(self, tmp_path):
+        """A vision model still gets its own name-correlated projector even when
+        other models share the directory."""
+        from justllama.models.profiles import _detect_mmproj
+        (tmp_path / "qwen3-8b.gguf").write_bytes(b"x")
+        model = tmp_path / "llava-1.6.gguf"
+        model.write_bytes(b"x")
+        proj = tmp_path / "llava-1.6-mmproj.gguf"
+        proj.write_bytes(b"x")
+        assert _detect_mmproj(str(model)) == str(proj)

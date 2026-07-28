@@ -18,8 +18,8 @@ class VectorStore(QObject):
     status_changed = Signal(str)
 
     def __init__(self, store_path: str = "", collection_name: str = "justllama",
-                 chunk_size: int = 512, chunk_overlap: int = 50, settings=None,
-                 parent=None):
+                 chunk_size: int = 512, chunk_overlap: int = 50, parent=None,
+                 *, settings=None):
         super().__init__(parent)
         self._store_path = store_path or str(
             Path.home() / ".local" / "share" / "justllama" / "vectordb"
@@ -31,20 +31,56 @@ class VectorStore(QObject):
         self._client = None
         self._collection = None
         self._retriever = None
+        self._embedder = None
+        self._embedder_sig = None
 
     def _get_embedder(self):
         """Return a CloudEmbedder if cloud embeddings are enabled/valid, else None.
 
         Any misconfiguration returns None so the caller falls back to the
-        default local (Chroma) embedding path.
+        default local (Chroma) embedding path. The embedder is cached and only
+        rebuilt when the relevant settings change.
         """
         if self._settings is None:
             return None
         try:
-            from justllama.rag.embeddings import CloudEmbedder
-            return CloudEmbedder.from_settings(self._settings)
+            sig = (
+                self._settings.get_string("rag/embeddings_backend"),
+                self._settings.get_string("rag/embeddings_provider"),
+                self._settings.get_string("rag/embeddings_model"),
+            )
         except Exception:
             return None
+        if sig == self._embedder_sig:
+            return self._embedder
+        try:
+            from justllama.rag.embeddings import CloudEmbedder
+            self._embedder = CloudEmbedder.from_settings(self._settings)
+        except Exception:
+            self._embedder = None
+        self._embedder_sig = sig
+        return self._embedder
+
+    def _effective_collection_name(self) -> str:
+        """Return the collection name for the active embedding backend.
+
+        Cloud embeddings use a distinct collection per (provider, model) so
+        vectors of different dimensions never mix in a single collection
+        (which would corrupt retrieval). Local embeddings keep the base name
+        for backward compatibility with existing stores.
+        """
+        try:
+            emb = self._get_embedder()
+        except Exception:
+            emb = None
+        if emb is None:
+            return self._collection_name
+        import hashlib
+        import re
+        sig = f"{emb.provider}:{emb.model}"
+        digest = hashlib.sha1(sig.encode("utf-8", "ignore")).hexdigest()[:10]
+        prov = re.sub(r"[^a-z0-9]", "", str(emb.provider).lower())[:12] or "cloud"
+        return f"{self._collection_name}_{prov}_{digest}"
 
     def set_retriever(self, retriever) -> None:
         """Link a Retriever so its BM25 keyword index stays in sync with
@@ -52,25 +88,27 @@ class VectorStore(QObject):
         self._retriever = retriever
 
     def _ensure_client(self):
-        """Lazy-init ChromaDB client and collection."""
-        if self._client is not None:
-            return
+        """Lazy-init the ChromaDB client and bind the collection for the active
+        embedding backend (a distinct collection per cloud embedding space)."""
         try:
             import chromadb
-            Path(self._store_path).mkdir(parents=True, exist_ok=True)
-            self._client = chromadb.PersistentClient(path=self._store_path)
-            self._collection = self._client.get_or_create_collection(
-                name=self._collection_name,
-                metadata={"hnsw:space": "cosine"},
-            )
-            self.status_changed.emit(
-                f"Vector store ready: {self._collection.count()} chunks"
-            )
         except ImportError:
             self.status_changed.emit(
                 "ChromaDB not installed. Install with: pip install chromadb"
             )
             raise
+        if self._client is None:
+            Path(self._store_path).mkdir(parents=True, exist_ok=True)
+            self._client = chromadb.PersistentClient(path=self._store_path)
+        name = self._effective_collection_name()
+        if self._collection is None or getattr(self._collection, "name", None) != name:
+            self._collection = self._client.get_or_create_collection(
+                name=name,
+                metadata={"hnsw:space": "cosine"},
+            )
+            self.status_changed.emit(
+                f"Vector store ready: {self._collection.count()} chunks"
+            )
 
     @Slot(str, result=int)
     def add_documents(self, chunks_json: str) -> int:
@@ -287,15 +325,16 @@ class VectorStore(QObject):
         subsequent ``add_documents``/``query`` call.
         """
         self._ensure_client()
+        name = getattr(self._collection, "name", None) or self._effective_collection_name()
         try:
             try:
-                self._client.delete_collection(self._collection_name)
+                self._client.delete_collection(name)
             except Exception:
                 # Collection may not exist yet (e.g., first run) — ignore and
                 # fall through to (re)create a fresh one.
                 pass
             self._collection = self._client.get_or_create_collection(
-                name=self._collection_name,
+                name=name,
                 metadata={"hnsw:space": "cosine"},
             )
             self.status_changed.emit("Vector store cleared")

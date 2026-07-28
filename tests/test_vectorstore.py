@@ -303,6 +303,22 @@ class TestCloudEmbeddings:
         assert "embeddings" in kwargs
         assert len(kwargs["embeddings"]) == 2
 
+    def test_cloud_uses_distinct_collection(self, qapp, tmp_path, mock_chromadb):
+        """Cloud embeddings must live in a separate collection from local ones so
+        vectors of different dimensions never mix."""
+        _, mock_client, _ = mock_chromadb
+        store, embedder = self._cloud_store(tmp_path, mock_chromadb)
+        embedder.provider = "nvidia"
+        embedder.model = "nv-embed-v1"
+        store._ensure_client()
+        names = [
+            c.kwargs.get("name")
+            for c in mock_client.get_or_create_collection.call_args_list
+        ]
+        assert any(
+            n and n != "justllama" and n.startswith("justllama_") for n in names
+        ), names
+
     def test_query_passes_query_embeddings(self, qapp, tmp_path, mock_chromadb):
         """When a cloud embedder is available, query() uses query_embeddings=."""
         _, _, mock_col = mock_chromadb

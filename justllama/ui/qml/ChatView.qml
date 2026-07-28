@@ -969,7 +969,9 @@ Kirigami.Page {
             onAccepted: {
                 var paths = chatPage.pendingAttachments.slice()
                 for (var i = 0; i < selectedFiles.length; i++) {
-                    paths.push(selectedFiles[i].toString().replace("file://", ""))
+                    // decodeURIComponent so paths with spaces/non-ASCII resolve
+                    // (otherwise Python's Path().exists() fails and the image is dropped).
+                    paths.push(decodeURIComponent(selectedFiles[i].toString().replace("file://", "")))
                 }
                 chatPage.pendingAttachments = paths
                 toast.show("Attached " + selectedFiles.length + " image(s)", "info")

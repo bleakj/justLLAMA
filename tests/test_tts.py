@@ -64,8 +64,10 @@ def test_speak_starts_worker_when_enabled(settings, monkeypatch):
         def __init__(self, text, voice, cached_model=None, parent=None):
             started["text"] = text
             started["voice"] = voice
-            self.finished = MagicMock()
+            self.synthesis_finished = MagicMock()
             self.error = MagicMock()
+            self.deleteLater = MagicMock()
+            self._req_id = 0
 
         def start(self):
             started["started"] = True

@@ -11,25 +11,37 @@ from justllama.models.metadata import get_model_training_context
 
 def _detect_mmproj(model_path: str) -> str:
     """Return a sibling multimodal projector (``*mmproj*.gguf``) next to the
-    model, or "" if none is found. Enables vision models automatically (WS5).
+    model, or "" if none clearly corresponds to it (WS5).
+
+    To avoid attaching an unrelated projector to a text-only model in a shared
+    models directory (which would break llama-server startup), a projector is
+    only returned when either (a) its filename correlates with the model's
+    name, or (b) the directory contains exactly one model and one projector.
     """
     try:
         p = Path(model_path)
         parent = p.parent
         if not parent.is_dir():
             return ""
-        # Prefer a projector whose name shares the model's stem, else any.
-        candidates = sorted(parent.glob("*mmproj*.gguf")) + sorted(parent.glob("*.mmproj.gguf"))
-        # De-duplicate while preserving order.
-        seen = set()
-        candidates = [c for c in candidates if not (c in seen or seen.add(c))]
-        if not candidates:
+        projectors = sorted(set(parent.glob("*mmproj*.gguf")))
+        if not projectors:
             return ""
-        stem = p.stem.lower()
-        for c in candidates:
-            if c.stem.lower().replace("mmproj", "").strip("-._") and stem[:6] in c.stem.lower():
+        model_stem = p.stem.lower()
+        # (a) Name-correlated projector: model name appears in the projector
+        # filename, or the projector's non-"mmproj" core matches the model.
+        for c in projectors:
+            proj_stem = c.stem.lower()
+            core = proj_stem.replace("mmproj", "").strip("-._ ")
+            if model_stem and (
+                model_stem in proj_stem
+                or (core and (model_stem.startswith(core) or core.startswith(model_stem)))
+            ):
                 return str(c)
-        return str(candidates[0])
+        # (b) Unambiguous directory: exactly one model file and one projector.
+        models = [g for g in parent.glob("*.gguf") if g not in projectors]
+        if len(projectors) == 1 and len(models) == 1 and models[0] == p:
+            return str(projectors[0])
+        return ""
     except Exception:
         return ""
 

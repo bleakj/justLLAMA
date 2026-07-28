@@ -145,7 +145,10 @@ class LlamaClient:
         )
         resp.raise_for_status()
         data = resp.json().get("data", [])
-        return [item["embedding"] for item in data]
+        # The OpenAI-compatible response order is not contractually guaranteed;
+        # sort by ``index`` so embeddings line up with the input order.
+        ordered = sorted(data, key=lambda d: d.get("index", 0))
+        return [item["embedding"] for item in ordered]
 
     def tokenize(self, content: str, *, add_special: bool = False,
                  with_pieces: bool = False, timeout: float = 30) -> dict:

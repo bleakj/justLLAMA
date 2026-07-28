@@ -207,6 +207,22 @@ class ChatRunner(QThread):
             pass
         return []
 
+    def _compose_messages(self, rag_prefix: list) -> list:
+        """Return the messages to send, folding any RAG context into the
+        leading system message so the request never carries two consecutive
+        system messages (some chat templates reject that). self.messages is
+        never mutated, so the history returned to QML stays intact.
+        """
+        if not rag_prefix:
+            return self.messages
+        msgs = list(self.messages)
+        if msgs and msgs[0].get("role") == "system" and isinstance(msgs[0].get("content"), str):
+            head = dict(msgs[0])
+            head["content"] = rag_prefix[0]["content"] + "\n\n" + head["content"]
+            msgs[0] = head
+            return msgs
+        return rag_prefix + msgs
+
     def _execute_loop(self):
         settings = AppSettings()
         port = settings.get_int("server/port") or 8080
@@ -306,7 +322,7 @@ class ChatRunner(QThread):
                     pass
 
             resp = client.chat_completion(
-                messages=rag_prefix + self.messages,
+                messages=self._compose_messages(rag_prefix),
                 model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
