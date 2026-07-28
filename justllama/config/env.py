@@ -6,7 +6,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv, set_key
 
-_ENV_PATH = Path(__file__).resolve().parent.parent / ".env"  # justllama/.env
+_ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"  # <project root>/.env
+# Pre-existing installs stored keys inside the package; keep reading them.
+_LEGACY_ENV_PATH = Path(__file__).resolve().parent.parent / ".env"  # justllama/.env
 _PROVIDER_ENV = {
     "nvidia": "NVIDIA_API_KEY",
     "openrouter": "OPENROUTER_API_KEY",
@@ -17,8 +19,13 @@ _PROVIDER_ENV = {
 
 
 def load_env() -> None:
-    """Load .env into os.environ. No-op (and no error) if the file is absent."""
+    """Load .env into os.environ. No-op (and no error) if the file is absent.
+
+    The project-root .env is canonical; the legacy in-package location is
+    still read (without overriding) so older installs keep working.
+    """
     load_dotenv(dotenv_path=_ENV_PATH, override=False)
+    load_dotenv(dotenv_path=_LEGACY_ENV_PATH, override=False)
 
 
 def get_api_key(provider: str) -> str:
@@ -29,7 +36,8 @@ def get_api_key(provider: str) -> str:
 
 
 def set_api_key(provider: str, value: str) -> None:
-    """Persist a key to .env and make it visible in the current process."""
+    """Persist a key to the project-root .env and make it visible in the
+    current process."""
     if provider not in _PROVIDER_ENV:
         raise ValueError(f"Unknown API provider: {provider!r}")
     var = _PROVIDER_ENV[provider]

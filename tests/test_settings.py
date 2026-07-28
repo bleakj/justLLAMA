@@ -181,6 +181,7 @@ class TestGetAllServerConfig:
             "flash_attn", "mmap", "mlock", "numa",
             "cache_type_k", "cache_type_v", "cpu_moe", "n_cpu_moe",
             "model_draft", "gpu_layers_draft", "draft_max", "draft_min",
+            "spec_type", "mmproj",
             "extra_args",
         }
         assert set(cfg.keys()) == expected_keys

@@ -3,14 +3,14 @@
 # Install with:
 #   pip install -r requirements.txt
 #
-# For optional RAG support:
-#   pip install -r requirements.txt[rag]
+# For optional RAG support (extras come from pyproject.toml):
+#   pip install -e ".[rag]"
 #
 # For development:
-#   pip install -r requirements.txt[dev]
+#   pip install -e ".[rag,dev]"
 #
 # System prerequisites (not pip-installable):
-#   - llama.cpp built locally (see docs/llama-cpp-setup.md)
+#   - llama-server binary (Fedora repos, or llama.cpp built locally — see README “Requirements”)
 #   - ComfyUI with comfy-cli (pip install comfy-cli)
 #   - ComfyUI-GGUF custom node (comfy node install comfyui-gguf)
 #   - Video GGUF models symlinked to ComfyUI/models/diffusion_models/

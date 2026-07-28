@@ -149,14 +149,15 @@ response = client.chat.completions.create(
 
 ### Secrets (`.env`)
 
-Cloud API keys (NVIDIA, OpenRouter, Opencode) can be set directly from the Settings UI (under **External API Keys**), which writes them to `.env`. They are **never** stored in application config. The `.env` file lives at the project root (gitignored). Copy `.env.example` to `.env` and fill in your keys:
+Cloud API keys (NVIDIA, OpenRouter, Opencode, Gemini, Kilocode) can be set directly from the Settings UI (under **External API Keys**), which writes them to `.env`. They are **never** stored in application config. The `.env` file lives at the project root (gitignored). Copy `.env.example` to `.env` and fill in your keys:
 
 ```bash
 cp .env.example .env
-# then edit .env: NVIDIA_API_KEY=..., OPENROUTER_API_KEY=..., OPENCODE_API_KEY=...
+# then edit .env: NVIDIA_API_KEY=..., OPENROUTER_API_KEY=..., OPENCODE_API_KEY=...,
+#                 GEMINI_API_KEY=..., KILOCODE_API_KEY=...
 ```
 
-On startup justLLAMA loads `.env` into the environment via `python-dotenv`; the values are read by Council Mode when a council slot uses a `provider:model` prefix. Existing real environment variables take precedence over `.env` (standard dotenv behavior). Keys set via the Settings UI are immediately available without restarting.
+On startup justLLAMA loads `.env` into the environment via `python-dotenv`; the values are read by Council Mode when a council slot uses a `provider:model` prefix. Existing real environment variables take precedence over `.env` (standard dotenv behavior). Keys set via the Settings UI are immediately available without restarting. A legacy `justllama/.env` (inside the package, used by older installs) is still read as a fallback; the project-root file wins on conflict.
 
 ### QSettings
 
@@ -284,12 +285,34 @@ justllama/
 # Install dev dependencies
 pip install -e ".[rag,dev]"
 
-# Run tests (334 tests)
+# Run tests (447 tests; 6 are strict-xfail markers tracking known bugs — see ANALYSIS.md)
 python3 -m pytest tests/ -v
 
 # Quick check
 python3 -m pytest tests/ -q
+
+# Headless (no display / CI): use Qt's offscreen platform
+QT_QPA_PLATFORM=offscreen python3 -m pytest tests/ -q
+
+# Syntax gate (stdlib only, no extra tooling)
+python3 -m compileall -q justllama
 ```
+
+### Post-edit QML check
+
+After any Kirigami/QML edit, launch the real app and watch the console for
+~3 seconds — leftover QML warnings (e.g. `anchors.fill` inside layouts, or
+`QML Shortcut: Only binding to one of multiple key bindings`) almost always
+survive edits even when the UI looks fine:
+
+```bash
+timeout 5 justllama   # or: timeout 5 python3 -m justllama
+# read the console output before it exits; a clean launch prints no QML warnings
+```
+
+Run this in the real desktop session: the `org.kde.desktop` style warnings
+(such as the Shortcut ones) do not appear under `QT_QPA_PLATFORM=offscreen`
+or `minimal`, which is why the automated QML test cannot catch them.
 
 ### Architecture
 
