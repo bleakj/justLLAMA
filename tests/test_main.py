@@ -598,3 +598,27 @@ def test_settings_file_dialog_preserves_absolute_path(qapp, monkeypatch):
     assert res == "/home/dsb/models/model.gguf", (
         f"absolute path must keep its leading slash, got {res!r}"
     )
+
+
+def test_council_synthesis_routes_through_chat_manager():
+    """Regression guard: the Council synthesis handler must dispatch through
+    chatManager.send_message (the worker-thread path) and must NOT reference
+    the removed, undefined ``callChatCompletion`` helper or do UI-thread RAG.
+    """
+    qml = (
+        Path(__file__).parent.parent
+        / "justllama" / "ui" / "qml" / "ChatView.qml"
+    ).read_text()
+    assert "callChatCompletion" not in qml, (
+        "onSynthesis_ready still references the undefined callChatCompletion"
+    )
+    # The synthesis handler body must end by dispatching via chatManager.
+    start = qml.index("function onSynthesis_ready(")
+    end = qml.index("function onError(", start)
+    body = qml[start:end]
+    assert "chatManager.send_message(" in body, (
+        "onSynthesis_ready must route the synthesis through chatManager.send_message"
+    )
+    assert "retriever.search(" not in body, (
+        "onSynthesis_ready must not run UI-thread RAG retrieval"
+    )

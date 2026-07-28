@@ -106,20 +106,14 @@ Kirigami.Page {
             streamingText.text = msg
         }
         function onSynthesis_ready(synthesis_prompt) {
+            // Route the council's synthesis through the same worker-thread path
+            // as a normal chat turn (chatManager.send_message). RAG retrieval
+            // (+ optional rerank) runs inside ChatRunner off the UI thread, so
+            // there is no UI-thread retriever.search here and no duplicate
+            // context injection.
             var messages = []
             if (appSettings.get_bool("rag/enabled")) {
-                var lastMsg = messageHistory[messageHistory.length - 1]
-                var text = lastMsg ? lastMsg.content : ""
-                var ragResults = retriever.search(text, 3)
-                if (ragResults) {
-                    try {
-                        var ragData = JSON.parse(ragResults)
-                        if (ragData.length > 0) {
-                            var ragContext = ragData.map(function(r) { return r.text }).join("\n\n")
-                            messages.push({"role": "system", "content": "Relevant context:\n" + ragContext})
-                        }
-                    } catch (e) {}
-                }
+                ragIndicator.visible = false
             }
             var sysPrompt = memoryManager.get_system_prompt_addition()
             if (sysPrompt.length > 0) {
@@ -133,7 +127,30 @@ Kirigami.Page {
             }
             messages = messages.concat(history)
             messages = consolidateSystemMessages(messages)
-            callChatCompletion(messages)
+
+            // Safety net so the synthesis request fits the context window.
+            var droppedForFit = trimMessagesToFit(messages)
+            if (droppedForFit > 0) {
+                toast.show("Trimmed " + droppedForFit + " old message(s) to fit the context window", "info")
+            }
+
+            chatPage.activeGenerationMode = 0
+            streamingText.text = "Synthesizing council response..."
+            streamingReasoningText.text = ""
+            chatPage.originalMessagesCount = messages.length
+            isGenerating = true
+            var modelPath = appSettings.get_string("server/model_path")
+            var modelName = modelPath.split('/').pop().replace('.gguf', '')
+            var params = {
+                "model": modelName,
+                "temperature": chatPage.genTemperature,
+                "top_p": chatPage.genTopP,
+                "top_k": chatPage.genTopK,
+                "repeat_penalty": chatPage.genRepeatPenalty,
+                "max_tokens": chatPage.genMaxTokens,
+                "mode": 0
+            }
+            chatManager.send_message(messages, params)
         }
         function onError(msg) {
             isGenerating = false
