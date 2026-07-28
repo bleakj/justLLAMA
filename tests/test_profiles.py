@@ -487,3 +487,33 @@ class TestDetectMmproj:
         proj = tmp_path / "llava-1.6-mmproj.gguf"
         proj.write_bytes(b"x")
         assert _detect_mmproj(str(model)) == str(proj)
+
+
+class TestIsVisionCapable:
+    def _patch_settings(self, monkeypatch, mmproj=""):
+        class _S:
+            def get_string(self, key):
+                return mmproj
+        monkeypatch.setattr("justllama.config.settings.AppSettings", lambda: _S())
+
+    def test_false_when_empty_path(self, qapp):
+        assert ModelProfiles().is_vision_capable("") is False
+
+    def test_true_when_sibling_projector(self, qapp, tmp_path, monkeypatch):
+        self._patch_settings(monkeypatch, mmproj="")
+        model = tmp_path / "llava-1.6.gguf"
+        model.write_bytes(b"x")
+        (tmp_path / "llava-1.6-mmproj.gguf").write_bytes(b"x")
+        assert ModelProfiles().is_vision_capable(str(model)) is True
+
+    def test_false_when_no_projector(self, qapp, tmp_path, monkeypatch):
+        self._patch_settings(monkeypatch, mmproj="")
+        model = tmp_path / "model.gguf"
+        model.write_bytes(b"x")
+        assert ModelProfiles().is_vision_capable(str(model)) is False
+
+    def test_true_when_explicit_mmproj_set(self, qapp, tmp_path, monkeypatch):
+        self._patch_settings(monkeypatch, mmproj="/models/some.mmproj.gguf")
+        model = tmp_path / "model.gguf"
+        model.write_bytes(b"x")
+        assert ModelProfiles().is_vision_capable(str(model)) is True

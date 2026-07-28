@@ -37,6 +37,13 @@ Kirigami.Page {
     property bool readAloud: false
     // Local image paths attached to the next outgoing message (WS5 vision).
     property var pendingAttachments: []
+    // Whether the current model can accept images (explicit mmproj or an
+    // auto-detected sibling projector). Drives the attach-image button.
+    property bool visionCapable: false
+    function updateVisionCapable() {
+        chatPage.visionCapable = modelProfiles.is_vision_capable(
+            appSettings.get_string("server/model_path"))
+    }
     property bool showTerminal: false
     readonly property color modeAccentColor: {
         switch (modeSelector.currentIndex) {
@@ -82,6 +89,10 @@ Kirigami.Page {
             }
             if (key === "server/model_path") {
                 chatPage.updateAssistantName(value)
+                chatPage.updateVisionCapable()
+            }
+            if (key === "server/mmproj") {
+                chatPage.updateVisionCapable()
             }
             if (key === "memory/enabled") {
                 memoryIndicator.visible = value
@@ -301,6 +312,7 @@ Kirigami.Page {
 
     Component.onCompleted: {
         chatPage.updateAssistantName()
+        chatPage.updateVisionCapable()
     }
 
 
@@ -930,7 +942,7 @@ Kirigami.Page {
 
                     Button {
                         id: attachButton
-                        visible: appSettings.get_string("server/mmproj").length > 0
+                        visible: chatPage.visionCapable
                                  || chatPage.pendingAttachments.length > 0
                         enabled: !isGenerating
                         icon.name: "insert-image"
@@ -951,7 +963,6 @@ Kirigami.Page {
                         text: isGenerating ? "Stop" : "Send"
                         icon.name: isGenerating ? "media-playback-stop" : "document-send"
                         enabled: inputField.text.length > 0 || isGenerating
-                                 || chatPage.pendingAttachments.length > 0
                         onClicked: {
                             if (isGenerating) { stopGeneration() }
                             else { sendMessage() }

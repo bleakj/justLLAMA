@@ -410,6 +410,23 @@ class ModelProfiles(QObject):
         """Return merged config as a JSON string for QML consumption."""
         eff = self.get_effective_config(model_path, global_settings)
         return json.dumps(eff)
+
+    @Slot(str, result=bool)
+    def is_vision_capable(self, model_path: str) -> bool:
+        """True if the model can accept images (WS5): an explicit
+        ``server/mmproj`` is configured, or a sibling projector is
+        auto-detected next to the model file.
+        """
+        if not model_path:
+            return False
+        try:
+            from justllama.config.settings import AppSettings
+            explicit = AppSettings().get_string("server/mmproj")
+        except Exception:
+            explicit = ""
+        if explicit:
+            return True
+        return bool(_detect_mmproj(model_path))
     @Slot(result=list)
     def list_profiles(self) -> list[str]:
         """List all profile names."""
