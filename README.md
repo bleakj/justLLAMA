@@ -285,7 +285,7 @@ justllama/
 # Install dev dependencies
 pip install -e ".[rag,dev]"
 
-# Run tests (447 tests; 6 are strict-xfail markers tracking known bugs — see ANALYSIS.md)
+# Run tests (447 tests, all passing)
 python3 -m pytest tests/ -v
 
 # Quick check

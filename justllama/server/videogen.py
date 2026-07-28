@@ -123,6 +123,7 @@ class VideoGenRunner(QThread):
             self.error.emit("Video generation engine did not start within 60s")
             stop_comfyui(comfy_proc)
             self._restore_server(was_running)
+            return
         video_path = self._post_prompt(comfy_proc)
         if video_path and not self._stop_requested:
             self.generation_complete.emit(video_path)
@@ -146,7 +147,13 @@ class VideoGenRunner(QThread):
         model = settings.get_string("server/model_path")
         port = settings.get_int("server/port")
         ctx = settings.get_int("server/ctx_size")
-        gpu = settings.get_int("server/n_gpu_layers")
+        # n_gpu_layers may be the string "auto" (the shipped default), so it
+        # cannot go through get_int (int("auto") raises). Parse like council.py.
+        n_gpu_raw = settings.get_string("server/n_gpu_layers")
+        try:
+            gpu = int(n_gpu_raw)
+        except (ValueError, TypeError):
+            gpu = n_gpu_raw if n_gpu_raw else "auto"
         threads = settings.get_int("server/threads")
 
         if not model:

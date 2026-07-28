@@ -14,7 +14,9 @@ from pathlib import Path
 
 COMFYUI_DIR = Path.home() / ".config" / "comfy-cli" / "ComfyUI"
 PORT = 8188
-HEALTH_URL = f"http://127.0.0.1:{PORT}/health"
+# ComfyUI exposes no /health endpoint; /system_stats is the lightweight
+# readiness probe it does serve, so polling it actually returns 200 once up.
+HEALTH_URL = f"http://127.0.0.1:{PORT}/system_stats"
 PROMPT_URL = f"http://127.0.0.1:{PORT}/prompt"
 COMFYUI_OUTPUT = COMFYUI_DIR / "output"
 

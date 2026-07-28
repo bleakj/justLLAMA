@@ -2,15 +2,25 @@
 
 > **Status update (2026-07-28):** Phase 0 is done — the stale
 > `test_settings.py` expectation was fixed and the suite is green:
-> **441 passed, 6 xfailed** (verified with `QT_QPA_PLATFORM=offscreen
-> python3 -m pytest tests/ -q`). The 3 CRITICAL bugs below are still
-> unfixed and are now tracked executably by strict-xfail regression tests
-> in `tests/test_known_bugs.py`; when a bug is fixed its test XPASSes and
-> fails the run until the marker is removed. Note: `VectorStore.clear()`
-> was reordered since this audit, but the stale-handle consequence of
-> BUG-1 is unchanged (get_or_create returns the existing collection,
-> which is then deleted and kept bound). BUG-8 (.env path) is fixed:
-> the loader now uses the project root with a legacy in-package fallback.
+> **447 passed** (verified with `QT_QPA_PLATFORM=offscreen
+> python3 -m pytest tests/ -q`).
+>
+> **The 3 CRITICAL bugs below are now FIXED** and guarded by regression
+> tests in `tests/test_known_bugs.py` (previously strict-xfail, now plain
+> passing assertions):
+> - **BUG-1** — `VectorStore.clear()` now deletes the collection *before*
+>   re-creating it, so the bound handle stays live.
+> - **BUG-2** — `_restore_server` (imagegen + videogen) parses
+>   `server/n_gpu_layers` via `get_string` + try/except (council.py idiom),
+>   so the shipped `"auto"` default no longer raises and the server is
+>   restored after generation.
+> - **BUG-3** — the ComfyUI health probe now targets `/system_stats` (an
+>   endpoint ComfyUI serves), and a failed health check aborts with cleanup
+>   (`stop_comfyui` + `_restore_server` + early `return`) before
+>   `_post_prompt` runs.
+>
+> BUG-8 (.env path) was fixed in the prior commit. The HIGH/MEDIUM/LOW
+> items below remain open for follow-up per the Fix Loop Plan.
 
 ## Summary
 - **Project**: PySide6/Kirigami desktop GUI wrapping llama.cpp llama-server

@@ -234,23 +234,25 @@ class VectorStore(QObject):
     def clear(self):
         """Delete all chunks from the collection.
 
-        Re-creates the collection atomically (via get_or_create) before
-        deleting the old one, so an in-flight query falls over to the new
-        empty collection instead of hitting a missing-collection error.
+        Deletes the existing collection first, then re-creates a fresh one
+        and binds it. Deleting before re-creating is essential: ChromaDB's
+        ``get_or_create_collection`` returns the *existing* collection, so
+        creating first and deleting after would leave ``self._collection``
+        pointing at a collection that no longer exists, breaking every
+        subsequent ``add_documents``/``query`` call.
         """
         self._ensure_client()
         try:
-            new_collection = self._client.get_or_create_collection(
-                name=self._collection_name,
-                metadata={"hnsw:space": "cosine"},
-            )
             try:
                 self._client.delete_collection(self._collection_name)
             except Exception:
-                # If delete fails (e.g., first run) we still have a fresh
-                # collection — keep going.
+                # Collection may not exist yet (e.g., first run) — ignore and
+                # fall through to (re)create a fresh one.
                 pass
-            self._collection = new_collection
+            self._collection = self._client.get_or_create_collection(
+                name=self._collection_name,
+                metadata={"hnsw:space": "cosine"},
+            )
             self.status_changed.emit("Vector store cleared")
             if self._retriever is not None:
                 self._retriever.clear_corpus()
