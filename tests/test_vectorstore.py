@@ -280,6 +280,69 @@ class TestQuery:
 
 
 # ===================================================================
+# Cloud embeddings (WS2)
+# ===================================================================
+
+class TestCloudEmbeddings:
+    def _cloud_store(self, tmp_path, mock_chromadb):
+        """A VectorStore whose _get_embedder yields a stub embedder."""
+        store = VectorStore(store_path=str(tmp_path / "vectordb"), settings=object())
+        embedder = MagicMock()
+        embedder.embed.side_effect = lambda texts: [[0.1, 0.2, 0.3] for _ in texts]
+        store._get_embedder = lambda: embedder
+        return store, embedder
+
+    def test_add_passes_explicit_embeddings(self, qapp, tmp_path, mock_chromadb):
+        """When a cloud embedder is available, add() receives embeddings=."""
+        _, _, mock_col = mock_chromadb
+        store, embedder = self._cloud_store(tmp_path, mock_chromadb)
+        chunks = json.dumps([{"text": "a"}, {"text": "b"}])
+        store.add_documents(chunks)
+        embedder.embed.assert_called_once()
+        _, kwargs = mock_col.add.call_args
+        assert "embeddings" in kwargs
+        assert len(kwargs["embeddings"]) == 2
+
+    def test_query_passes_query_embeddings(self, qapp, tmp_path, mock_chromadb):
+        """When a cloud embedder is available, query() uses query_embeddings=."""
+        _, _, mock_col = mock_chromadb
+        mock_col.count.return_value = 2
+        mock_col.query.return_value = {
+            "ids": [["c0"]], "documents": [["X"]],
+            "metadatas": [[{}]], "distances": [[0.1]],
+        }
+        store, embedder = self._cloud_store(tmp_path, mock_chromadb)
+        store.query("hello", n_results=1)
+        _, kwargs = mock_col.query.call_args
+        assert "query_embeddings" in kwargs
+        assert "query_texts" not in kwargs
+
+    def test_query_falls_back_to_local_on_error(self, qapp, tmp_path, mock_chromadb):
+        """If cloud embedding raises, query() falls back to query_texts."""
+        _, _, mock_col = mock_chromadb
+        mock_col.count.return_value = 1
+        mock_col.query.return_value = {
+            "ids": [["c0"]], "documents": [["X"]],
+            "metadatas": [[{}]], "distances": [[0.1]],
+        }
+        store, embedder = self._cloud_store(tmp_path, mock_chromadb)
+        embedder.embed.side_effect = RuntimeError("no key")
+        store.query("hello")
+        _, kwargs = mock_col.query.call_args
+        assert kwargs.get("query_texts") == ["hello"]
+        assert "query_embeddings" not in kwargs
+
+    def test_add_falls_back_to_local_on_error(self, qapp, tmp_path, mock_chromadb):
+        """If cloud embedding raises, add() omits embeddings= (local default)."""
+        _, _, mock_col = mock_chromadb
+        store, embedder = self._cloud_store(tmp_path, mock_chromadb)
+        embedder.embed.side_effect = RuntimeError("boom")
+        store.add_documents(json.dumps([{"text": "a"}]))
+        _, kwargs = mock_col.add.call_args
+        assert "embeddings" not in kwargs
+
+
+# ===================================================================
 # count tests
 # ===================================================================
 

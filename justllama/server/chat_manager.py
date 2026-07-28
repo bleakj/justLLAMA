@@ -77,6 +77,8 @@ class ChatRunner(QThread):
     error_occurred = Signal(str)
     tool_call_detected = Signal(str, str)  # tool_name, tool_args
     reasoning_chunk_received = Signal(str)
+    telemetry_ready = Signal(dict)  # {ttft_s, tps, prompt_tokens, predicted_tokens}
+    rag_context_applied = Signal(int)  # number of chunks injected as context
 
     def __init__(self, messages: list, params: dict, mcp_manager, skills_manager=None, parent=None):
         super().__init__(parent)
@@ -84,6 +86,7 @@ class ChatRunner(QThread):
         self.params = dict(params)
         self.mcp_manager = mcp_manager
         self.skills_manager = skills_manager
+        self.retriever = None
         self._is_stopped = False
         self._current_response = None
 
@@ -105,14 +108,144 @@ class ChatRunner(QThread):
             except Exception:
                 pass
 
+    @staticmethod
+    def _encode_image(path: str):
+        """Return a data: URL for a local image file, or None on failure."""
+        import base64
+        import mimetypes
+        from pathlib import Path
+        try:
+            p = Path(path)
+            if not p.exists():
+                return None
+            mime, _ = mimetypes.guess_type(str(p))
+            if not mime or not mime.startswith("image/"):
+                mime = "image/png"
+            data = base64.b64encode(p.read_bytes()).decode("ascii")
+            return f"data:{mime};base64,{data}"
+        except Exception:
+            return None
+
+    def _apply_image_attachments(self):
+        """Rewrite the latest user message as an OpenAI multimodal content array
+        when image attachments are present (WS5).
+
+        Base64-encoding happens here (Python), never in QML. LlamaClient
+        forwards ``messages`` verbatim, so no client change is needed.
+        """
+        attachments = self.params.get("attachments") or []
+        if not attachments:
+            return
+        idx = None
+        for i in range(len(self.messages) - 1, -1, -1):
+            if self.messages[i].get("role") == "user":
+                idx = i
+                break
+        if idx is None:
+            return
+        msg = self.messages[idx]
+        text = msg.get("content")
+        if not isinstance(text, str):
+            return  # already multimodal or unexpected shape
+        content = [{"type": "text", "text": text}]
+        for path in attachments:
+            data_url = self._encode_image(path)
+            if data_url:
+                content.append({
+                    "type": "image_url",
+                    "image_url": {"url": data_url},
+                })
+        if len(content) > 1:
+            msg["content"] = content
+
+    def _latest_user_query(self) -> str:
+        """Return the text of the most recent user message, if any."""
+        for m in reversed(self.messages):
+            if m.get("role") == "user":
+                content = m.get("content")
+                if isinstance(content, str):
+                    return content
+                if isinstance(content, list):
+                    # Multimodal content: concatenate the text parts (WS5).
+                    return " ".join(
+                        part.get("text", "")
+                        for part in content
+                        if isinstance(part, dict) and part.get("type") == "text"
+                    )
+                return ""
+        return ""
+
+    def _build_rag_prefix(self, settings, port: int) -> list:
+        """Build an optional RAG system-message prefix for the sent messages.
+
+        Runs retrieval and (when enabled) LLM reranking on this worker thread.
+        Returns [] when RAG is disabled, no retriever is wired, or nothing is
+        found; on any failure it degrades to no context.
+        """
+        if self.retriever is None or not settings.get_bool("rag/enabled"):
+            return []
+        query = self._latest_user_query()
+        if not query:
+            return []
+        try:
+            rerank_enabled = settings.get_bool("rag/rerank_enabled")
+            rerank_top_n = settings.get_int("rag/rerank_top_n") or 20
+            results = self.retriever.retrieve_for_chat(
+                query,
+                top_k=3,
+                rerank_enabled=rerank_enabled,
+                rerank_top_n=rerank_top_n,
+                model=self.params.get("model", "default"),
+                port=port,
+            )
+            texts = [r.get("text", "") for r in results if r.get("text")]
+            if texts:
+                self.rag_context_applied.emit(len(texts))
+                return [{"role": "system",
+                         "content": "Relevant context:\n" + "\n\n".join(texts)}]
+        except Exception:
+            pass
+        return []
+
     def _execute_loop(self):
         settings = AppSettings()
         port = settings.get_int("server/port") or 8080
         client = LlamaClient(port=port)
 
+        # ── Image attachments (WS5): rewrite the latest user message as a
+        # multimodal content array before any RAG/query processing.
+        self._apply_image_attachments()
+
+        # ── RAG context injection (WS2/WS3) ───────────────────────────
+        # Retrieval and optional LLM reranking make blocking calls, so they run
+        # here (on this QThread) rather than on the QML/UI thread. The context
+        # is prepended only to the messages sent to the model, never to
+        # self.messages, so the history returned to QML stays unchanged.
+        rag_prefix = self._build_rag_prefix(settings, port)
+
         max_loops = 10
         loop_count = 0
         finalized = False  # True once a terminal signal has been emitted
+
+        # ── Per-response telemetry (WS1) ──────────────────────────────
+        # Wall-clock TTFT is measured from the very first request send to the
+        # first content/reasoning chunk of the whole turn. Token counts and
+        # tok/s come from the llama-server `timings` object on the final SSE
+        # chunk, aggregated across tool-loop iterations for the final answer.
+        turn_start = time.monotonic()
+        ttft_s = None
+        agg_prompt_tokens = 0
+        agg_predicted_tokens = 0
+        final_tps = None
+        saw_timings = False
+
+        def _emit_telemetry():
+            self.telemetry_ready.emit({
+                "ttft_s": ttft_s,
+                "tps": final_tps if saw_timings else None,
+                "prompt_tokens": agg_prompt_tokens if saw_timings else None,
+                "predicted_tokens": agg_predicted_tokens if saw_timings else None,
+            })
 
         while loop_count < max_loops and not self._is_stopped:
             loop_count += 1
@@ -173,7 +306,7 @@ class ChatRunner(QThread):
                     pass
 
             resp = client.chat_completion(
-                messages=self.messages,
+                messages=rag_prefix + self.messages,
                 model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
@@ -186,6 +319,7 @@ class ChatRunner(QThread):
             tool_calls_accumulated = {}
             full_content = ""
             full_reasoning = ""
+            iter_timings = None  # llama-server timings block for this iteration
 
             try:
                 for line in resp.iter_lines():
@@ -204,18 +338,27 @@ class ChatRunner(QThread):
                             parsed = json.loads(data_str)
                         except Exception:
                             continue
-                        
+
+                        # llama-server reports timings on the final chunk
+                        _t = parsed.get("timings")
+                        if _t:
+                            iter_timings = _t
+
                         delta = parsed.get("choices", [{}])[0].get("delta", {})
                         
                         # Accumulate content chunks
                         content_chunk = delta.get("content")
                         if content_chunk:
+                            if ttft_s is None:
+                                ttft_s = time.monotonic() - turn_start
                             full_content += content_chunk
                             self.chunk_received.emit(content_chunk)
                         
                         # Accumulate reasoning content (thinking phase)
                         reasoning_chunk = delta.get("reasoning_content")
                         if reasoning_chunk:
+                            if ttft_s is None:
+                                ttft_s = time.monotonic() - turn_start
                             full_reasoning += reasoning_chunk
                             self.reasoning_chunk_received.emit(reasoning_chunk)
                         
@@ -241,6 +384,15 @@ class ChatRunner(QThread):
             finally:
                 resp.close()
                 self._current_response = None
+
+            # Aggregate telemetry from this iteration's timings block
+            if iter_timings:
+                saw_timings = True
+                agg_prompt_tokens += int(iter_timings.get("prompt_n", 0) or 0)
+                agg_predicted_tokens += int(iter_timings.get("predicted_n", 0) or 0)
+                pps = iter_timings.get("predicted_per_second")
+                if pps is not None:
+                    final_tps = pps
 
             if self._is_stopped:
                 break
@@ -312,6 +464,7 @@ class ChatRunner(QThread):
                 if full_reasoning:
                     msg["reasoning_content"] = full_reasoning
                 self.messages.append(msg)
+                _emit_telemetry()
                 self.generation_complete.emit(self.messages)
                 finalized = True
                 break
@@ -322,6 +475,7 @@ class ChatRunner(QThread):
         # round above normally prevents reaching this, but a misbehaving model
         # could still return tool calls even when no tools were offered.
         if not finalized and not self._is_stopped:
+            _emit_telemetry()
             self.generation_complete.emit(self.messages)
 
 
@@ -337,6 +491,8 @@ class ChatManager(QObject):
     error_occurred = Signal(str)
     tool_call_detected = Signal(str, str)
     reasoning_chunk_received = Signal(str)
+    telemetry_ready = Signal(dict)  # {ttft_s, tps, prompt_tokens, predicted_tokens}
+    rag_context_applied = Signal(int)  # number of chunks injected as context
     # Auto-compaction signals
     context_nearly_full = Signal(int, int)  # used_tokens, max_tokens
     context_warning = Signal(int, int)  # used_tokens, max_tokens (at 60%)
@@ -344,10 +500,11 @@ class ChatManager(QObject):
     auto_compact_complete = Signal(str)  # Emitted with summary text after compaction
     auto_compact_error = Signal(str)  # Emitted if auto-compaction fails
 
-    def __init__(self, mcp_manager=None, skills_manager=None, parent=None):
+    def __init__(self, mcp_manager=None, skills_manager=None, retriever=None, parent=None):
         super().__init__(parent)
         self.mcp_manager = mcp_manager
         self.skills_manager = skills_manager
+        self.retriever = retriever
         self._runner = None
         self._monitor = None
         self._auto_compact_pending = False
@@ -460,11 +617,14 @@ class ChatManager(QObject):
         self.stop_generation()
 
         self._runner = ChatRunner(messages, params, self.mcp_manager, self.skills_manager)
+        self._runner.retriever = self.retriever
         self._runner.chunk_received.connect(self.chunk_received)
         self._runner.generation_complete.connect(self._on_generation_complete)
         self._runner.error_occurred.connect(self.error_occurred)
         self._runner.tool_call_detected.connect(self.tool_call_detected)
         self._runner.reasoning_chunk_received.connect(self.reasoning_chunk_received)
+        self._runner.telemetry_ready.connect(self.telemetry_ready)
+        self._runner.rag_context_applied.connect(self.rag_context_applied)
         self._runner.start()
 
     @Slot()

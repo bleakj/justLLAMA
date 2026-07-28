@@ -125,14 +125,18 @@ class LlamaClient:
         *,
         model: str = "default",
         timeout: float = 30,
+        **kwargs,
     ) -> list[list[float]]:
         """POST <api_prefix>/embeddings — get embeddings for text.
 
-        Useful for RAG pipeline when llama-server supports embedding.
+        Useful for RAG pipeline when llama-server (or a cloud provider)
+        supports embedding. Extra keyword args (e.g. NVIDIA's ``input_type``)
+        are merged into the request payload.
         """
         payload = {
             "input": input_text,
             "model": model,
+            **kwargs,
         }
         resp = self._session.post(
             self._url(f"{self.api_prefix}/embeddings"),
@@ -142,6 +146,40 @@ class LlamaClient:
         resp.raise_for_status()
         data = resp.json().get("data", [])
         return [item["embedding"] for item in data]
+
+    def tokenize(self, content: str, *, add_special: bool = False,
+                 with_pieces: bool = False, timeout: float = 30) -> dict:
+        """POST /tokenize — llama.cpp-native tokenizer endpoint.
+
+        Returns the parsed JSON (typically ``{"tokens": [...]}``).
+        """
+        payload = {
+            "content": content,
+            "add_special": add_special,
+            "with_pieces": with_pieces,
+        }
+        resp = self._session.post(self._url("/tokenize"), json=payload, timeout=timeout)
+        resp.raise_for_status()
+        return resp.json()
+
+    def detokenize(self, tokens: list[int], *, timeout: float = 30) -> dict:
+        """POST /detokenize — llama.cpp-native detokenizer endpoint.
+
+        Returns the parsed JSON (typically ``{"content": "..."}``).
+        """
+        resp = self._session.post(
+            self._url("/detokenize"),
+            json={"tokens": tokens},
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def metrics(self, timeout: float = 10) -> str:
+        """GET /metrics — Prometheus-format server metrics (plain text)."""
+        resp = self._session.get(self._url("/metrics"), timeout=timeout)
+        resp.raise_for_status()
+        return resp.text
 
     def slots(self, timeout: float = 5) -> list[dict]:
         """GET /slots — get slot information including token usage.

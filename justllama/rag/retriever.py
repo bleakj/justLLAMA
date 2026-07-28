@@ -212,3 +212,108 @@ class Retriever(QObject):
         """Clear the BM25 corpus."""
         self._bm25_corpus.clear()
         self._bm25_index = None
+
+    # ------------------------------------------------------------------
+    # LLM-based reranking (WS3)
+    # ------------------------------------------------------------------
+    # NOTE: rerank() and retrieve_for_chat() make a blocking network call and
+    # MUST run off the UI thread. They are invoked from ChatRunner (a QThread),
+    # never directly from QML, so the Qt/QML event loop is never blocked.
+
+    @staticmethod
+    def _parse_index_list(content: str, n: int) -> list[int]:
+        """Parse a model's JSON index array, keeping valid unique indices and
+        appending any missing ones so the ordering stays complete."""
+        import re
+        match = re.search(r"\[[^\]]*\]", content or "")
+        if not match:
+            return []
+        try:
+            raw = json.loads(match.group(0))
+        except Exception:
+            return []
+        if not isinstance(raw, list):
+            return []
+        seen: set[int] = set()
+        order: list[int] = []
+        for x in raw:
+            try:
+                idx = int(x)
+            except (ValueError, TypeError):
+                continue
+            if 0 <= idx < n and idx not in seen:
+                seen.add(idx)
+                order.append(idx)
+        for i in range(n):
+            if i not in seen:
+                order.append(i)
+        return order
+
+    def rerank(self, query: str, candidates: list[dict], top_k: int = 5, *,
+               model: str = "default", port: int = 8080,
+               timeout: float = 20) -> list[dict]:
+        """Listwise LLM rerank of candidate result dicts.
+
+        Asks the configured chat/cloud model to order the candidate passages by
+        relevance and returns them reordered and truncated to ``top_k``. On any
+        failure or timeout the original order (truncated) is returned unchanged.
+        """
+        if not candidates:
+            return []
+        n = len(candidates)
+        if n == 1:
+            return candidates[:top_k]
+        try:
+            from justllama.server.client import LlamaClient
+            client = LlamaClient(port=port)
+            listing = []
+            for i, c in enumerate(candidates):
+                text = (c.get("text") or "")[:500]
+                listing.append(f"[{i}] {text}")
+            prompt = (
+                "You are a search result reranker. Given a query and a numbered "
+                "list of passages, return the passage indices ordered from most "
+                "to least relevant to the query. Respond ONLY with a JSON array "
+                f"of integers, e.g. [2,0,1]. Use only indices 0..{n - 1}, no "
+                "duplicates.\n\n"
+                f"Query: {query}\n\nPassages:\n" + "\n".join(listing)
+            )
+            resp = client.chat_completion(
+                messages=[{"role": "user", "content": prompt}],
+                model=model, temperature=0.0, max_tokens=128,
+                stream=False, timeout=timeout,
+            )
+            content = ""
+            if isinstance(resp, dict):
+                choices = resp.get("choices", [])
+                if choices:
+                    content = choices[0].get("message", {}).get("content", "") or ""
+            order = self._parse_index_list(content, n)
+            if not order:
+                return candidates[:top_k]
+            reranked = [candidates[i] for i in order]
+            return reranked[:top_k]
+        except Exception:
+            return candidates[:top_k]
+
+    def retrieve_for_chat(self, query: str, top_k: int = 3, *,
+                          rerank_enabled: bool = False, rerank_top_n: int = 20,
+                          model: str = "default", port: int = 8080) -> list[dict]:
+        """Retrieve (and optionally LLM-rerank) chunks for a chat turn.
+
+        Runs the vector/BM25 search, then, when reranking is enabled, fetches a
+        wider candidate set (``rerank_top_n``) and reorders it via ``rerank``
+        before truncating to ``top_k``. Intended to be called from a background
+        thread; never the UI thread.
+        """
+        fetch_k = rerank_top_n if rerank_enabled else top_k
+        try:
+            candidates = json.loads(self.search(query, fetch_k))
+        except Exception:
+            candidates = []
+        if not candidates:
+            return []
+        if rerank_enabled:
+            candidates = self.rerank(query, candidates, top_k=top_k,
+                                     model=model, port=port)
+        return candidates[:top_k]

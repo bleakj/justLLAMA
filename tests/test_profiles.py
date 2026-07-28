@@ -439,3 +439,31 @@ class TestComputeSafeNgl:
 
         safe_ngl = _compute_safe_ngl(str(path))
         assert safe_ngl == 99
+
+
+# ---------------------------------------------------------------------------
+# Vision projector auto-detection (WS5)
+# ---------------------------------------------------------------------------
+
+class TestDetectMmproj:
+    def test_detects_sibling_projector(self, tmp_path):
+        from justllama.models.profiles import _detect_mmproj
+        model = tmp_path / "llava-model.gguf"
+        model.write_bytes(b"x")
+        proj = tmp_path / "llava-model.mmproj.gguf"
+        proj.write_bytes(b"x")
+        assert _detect_mmproj(str(model)) == str(proj)
+
+    def test_detects_generic_mmproj(self, tmp_path):
+        from justllama.models.profiles import _detect_mmproj
+        model = tmp_path / "model.gguf"
+        model.write_bytes(b"x")
+        proj = tmp_path / "mmproj-f16.gguf"
+        proj.write_bytes(b"x")
+        assert _detect_mmproj(str(model)) == str(proj)
+
+    def test_returns_empty_when_no_projector(self, tmp_path):
+        from justllama.models.profiles import _detect_mmproj
+        model = tmp_path / "model.gguf"
+        model.write_bytes(b"x")
+        assert _detect_mmproj(str(model)) == ""

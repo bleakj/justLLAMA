@@ -51,6 +51,14 @@ class AppSettings(QObject):
             "rag/vectorstore_path": str(
                 Path.home() / ".local" / "share" / "justllama" / "vectordb"
             ),
+            # Cloud embeddings (WS2): local (Chroma default) unless set to cloud.
+            "rag/embeddings_backend": "local",  # "local" | "cloud"
+            "rag/embeddings_provider": "",       # "nvidia" | "gemini"
+            "rag/embeddings_model": "",
+            # LLM reranking (WS3): off by default.
+            "rag/rerank_enabled": False,
+            "rag/rerank_top_n": 20,  # candidates fetched before rerank
+            "server/mmproj": "",  # vision projector (WS5)
             "memory/enabled": False,
             "memory/db_path": str(
                 Path.home() / ".local" / "share" / "justllama" / "memory.db"
@@ -63,6 +71,9 @@ class AppSettings(QObject):
             "chat/voice_input_enabled": False,
             "chat/voice_model": "base.en",
             "chat/voice_send_automatically": False,
+            # Text-to-speech (WS4): off by default; Kokoro voice id.
+            "chat/tts_enabled": False,
+            "chat/tts_voice": "af_sky",
             "skills/user_directory": str(Path.home() / ".local" / "share" / "justllama" / "skills"),
             "cloud_endpoints/opencode": "https://api.opencode.com",
             "ui/theme": "default",
@@ -197,6 +208,14 @@ class AppSettings(QObject):
     @property
     def voice_send_automatically(self) -> bool:
         return self.get_bool("chat/voice_send_automatically")
+
+    @property
+    def tts_enabled(self) -> bool:
+        return self.get_bool("chat/tts_enabled")
+
+    @property
+    def tts_voice(self) -> str:
+        return self.get_string("chat/tts_voice")
     @property
     def mcp_servers(self) -> list[str]:
         return self.get_list("mcp/servers")

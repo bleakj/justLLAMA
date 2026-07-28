@@ -383,6 +383,31 @@ Kirigami.ScrollablePage {
                         onClicked: folderDialog.open()
                     }
                 }
+
+                // Vision projector (WS5). Leave blank to auto-detect a sibling
+                // *mmproj*.gguf next to the loaded model.
+                Label {
+                    text: "Vision Projector (mmproj)"
+                    font.bold: true
+                    font.pointSize: 14
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    TextField {
+                        id: mmprojField
+                        Layout.fillWidth: true
+                        text: appSettings.get_string("server/mmproj")
+                        placeholderText: "Auto-detect sibling *mmproj*.gguf (leave blank)"
+                        onEditingFinished: appSettings.set_string("server/mmproj", text)
+                    }
+                    Button {
+                        text: "Browse"
+                        onClicked: {
+                            modelFileDialog.targetSettingKey = "server/mmproj"
+                            modelFileDialog.open()
+                        }
+                    }
+                }
             }
         }
         // Council Models Settings
@@ -537,6 +562,74 @@ Kirigami.ScrollablePage {
                         onValueModified: appSettings.set_int("rag/chunk_overlap", value)
                     }
                 }
+
+                // Cloud embeddings (WS2)
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label { text: "Embeddings:"; Layout.preferredWidth: 120 }
+                    ComboBox {
+                        id: embeddingsBackendBox
+                        model: ["local", "cloud"]
+                        Component.onCompleted: {
+                            var v = appSettings.get_string("rag/embeddings_backend")
+                            currentIndex = Math.max(0, model.indexOf(v))
+                        }
+                        onActivated: appSettings.set_string("rag/embeddings_backend", currentText)
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: embeddingsBackendBox.currentText === "cloud"
+                    Label { text: "Embed Provider:"; Layout.preferredWidth: 120 }
+                    ComboBox {
+                        id: embeddingsProviderBox
+                        // Only NVIDIA / Gemini expose an embeddings API.
+                        model: ["nvidia", "gemini"]
+                        Component.onCompleted: {
+                            var v = appSettings.get_string("rag/embeddings_provider")
+                            var idx = model.indexOf(v)
+                            currentIndex = idx >= 0 ? idx : 0
+                        }
+                        onActivated: appSettings.set_string("rag/embeddings_provider", currentText)
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: embeddingsBackendBox.currentText === "cloud"
+                    Label { text: "Embed Model:"; Layout.preferredWidth: 120 }
+                    TextField {
+                        Layout.fillWidth: true
+                        placeholderText: "e.g. nvidia/nv-embed-v1 or text-embedding-004"
+                        text: appSettings.get_string("rag/embeddings_model")
+                        onEditingFinished: appSettings.set_string("rag/embeddings_model", text)
+                    }
+                }
+
+                // LLM reranking (WS3)
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label { text: "Rerank (LLM):"; Layout.preferredWidth: 120 }
+                    Switch {
+                        id: rerankSwitch
+                        checked: appSettings.get_bool("rag/rerank_enabled")
+                        onCheckedChanged: appSettings.set_bool("rag/rerank_enabled", checked)
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: rerankSwitch.checked
+                    Label { text: "Rerank Top-N:"; Layout.preferredWidth: 120 }
+                    SpinBox {
+                        from: 5
+                        to: 100
+                        stepSize: 5
+                        value: appSettings.get_int("rag/rerank_top_n")
+                        onValueModified: appSettings.set_int("rag/rerank_top_n", value)
+                    }
+                }
             }
         }
 
@@ -676,6 +769,53 @@ Kirigami.ScrollablePage {
                             appSettings.set_bool("chat/voice_send_automatically", checked)
                         }
                     }
+                }
+
+                Kirigami.Separator { Layout.fillWidth: true }
+
+                // Text-to-speech (WS4)
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label {
+                        text: "Text-to-Speech:"
+                        Layout.preferredWidth: 120
+                        color: ttsEnabledSwitch.checked ? Kirigami.Theme.highlightColor : Kirigami.Theme.disabledTextColor
+                    }
+                    Switch {
+                        id: ttsEnabledSwitch
+                        checked: appSettings.get_bool("chat/tts_enabled")
+                        onCheckedChanged: appSettings.set_bool("chat/tts_enabled", checked)
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    enabled: ttsEnabledSwitch.checked
+                    Label {
+                        text: "TTS Voice:"
+                        Layout.preferredWidth: 120
+                        color: ttsEnabledSwitch.checked ? Kirigami.Theme.textColor : Kirigami.Theme.disabledTextColor
+                    }
+                    ComboBox {
+                        id: ttsVoiceCombo
+                        // Common Kokoro voice ids.
+                        model: ["af_sky", "af_bella", "af_sarah", "am_adam", "am_michael", "bf_emma", "bm_george"]
+                        Component.onCompleted: {
+                            var v = appSettings.get_string("chat/tts_voice")
+                            var idx = model.indexOf(v)
+                            currentIndex = idx >= 0 ? idx : 0
+                        }
+                        onActivated: appSettings.set_string("chat/tts_voice", currentText)
+                    }
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    visible: ttsEnabledSwitch.checked
+                    text: "Requires the optional TTS extra: pip install 'justllama[tts]' and Kokoro model files under ~/.local/share/justllama/tts/."
+                    font.pointSize: 9
+                    color: Kirigami.Theme.disabledTextColor
+                    wrapMode: Text.Wrap
                 }
             }
         }
@@ -1216,13 +1356,10 @@ Kirigami.ScrollablePage {
         nameFilters: ["GGUF Models (*.gguf)"]
         property string targetSettingKey: ""
         onAccepted: {
-            var path = selectedFile.toString()
-            if (path.startsWith("file:///")) {
-                path = path.slice(8)
-            } else if (path.startsWith("file://")) {
-                path = path.slice(7)
-            }
-            path = decodeURIComponent(path)
+            // Strip the file:// scheme while preserving the leading slash of an
+            // absolute path (file:///home/x -> /home/x). Matches the handling
+            // used by the other file/folder dialogs in this project.
+            var path = decodeURIComponent(selectedFile.toString().replace("file://", ""))
             appSettings.set_string(targetSettingKey, path)
             if (targetSettingKey === "council/model_1") {
                 councilModel1Field.text = path
@@ -1230,6 +1367,8 @@ Kirigami.ScrollablePage {
                 councilModel2Field.text = path
             } else if (targetSettingKey === "council/model_3") {
                 councilModel3Field.text = path
+            } else if (targetSettingKey === "server/mmproj") {
+                mmprojField.text = path
             }
         }
     }

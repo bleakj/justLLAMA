@@ -344,3 +344,88 @@ class TestCorpusLifecycle:
         results = json.loads(retriever.search("Python"))
         # Old Python chunks should be gone
         assert all("Python" not in r["text"] for r in results)
+
+
+# ---------------------------------------------------------------------------
+# LLM-based reranking (WS3)
+# ---------------------------------------------------------------------------
+
+class TestRerank:
+    def _candidates(self):
+        return [
+            {"text": "first", "score": 0.1},
+            {"text": "second", "score": 0.2},
+            {"text": "third", "score": 0.3},
+        ]
+
+    def _mock_client(self, monkeypatch, content):
+        mock_client = MagicMock()
+        mock_client.chat_completion.return_value = {
+            "choices": [{"message": {"content": content}}]
+        }
+        monkeypatch.setattr(
+            "justllama.server.client.LlamaClient", lambda *a, **k: mock_client
+        )
+        return mock_client
+
+    def test_reorders_by_model_index_list(self, retriever, monkeypatch):
+        self._mock_client(monkeypatch, "[2, 0, 1]")
+        out = retriever.rerank("q", self._candidates(), top_k=3)
+        assert [c["text"] for c in out] == ["third", "first", "second"]
+
+    def test_truncates_to_top_k(self, retriever, monkeypatch):
+        self._mock_client(monkeypatch, "[2, 0, 1]")
+        out = retriever.rerank("q", self._candidates(), top_k=2)
+        assert [c["text"] for c in out] == ["third", "first"]
+
+    def test_missing_indices_appended(self, retriever, monkeypatch):
+        # Model only returns one index; the rest keep original order.
+        self._mock_client(monkeypatch, "[1]")
+        out = retriever.rerank("q", self._candidates(), top_k=3)
+        assert [c["text"] for c in out] == ["second", "first", "third"]
+
+    def test_preserves_order_on_unparseable_response(self, retriever, monkeypatch):
+        self._mock_client(monkeypatch, "no json here")
+        out = retriever.rerank("q", self._candidates(), top_k=3)
+        assert [c["text"] for c in out] == ["first", "second", "third"]
+
+    def test_preserves_order_on_exception(self, retriever, monkeypatch):
+        mock_client = MagicMock()
+        mock_client.chat_completion.side_effect = RuntimeError("timeout")
+        monkeypatch.setattr(
+            "justllama.server.client.LlamaClient", lambda *a, **k: mock_client
+        )
+        out = retriever.rerank("q", self._candidates(), top_k=2)
+        assert [c["text"] for c in out] == ["first", "second"]
+
+    def test_empty_candidates(self, retriever):
+        assert retriever.rerank("q", [], top_k=3) == []
+
+    def test_retrieve_for_chat_without_rerank(self, retriever, monkeypatch):
+        # No rerank: retrieve_for_chat delegates to search and truncates.
+        monkeypatch.setattr(
+            retriever, "search",
+            lambda q, k: json.dumps([{"text": "a"}, {"text": "b"}, {"text": "c"}])
+        )
+        rerank_called = []
+        monkeypatch.setattr(retriever, "rerank",
+                            lambda *a, **k: rerank_called.append(True) or [])
+        out = retriever.retrieve_for_chat("q", top_k=2, rerank_enabled=False)
+        assert len(out) == 2
+        assert not rerank_called
+
+    def test_retrieve_for_chat_with_rerank(self, retriever, monkeypatch):
+        captured = {}
+        def fake_search(q, k):
+            captured["fetch_k"] = k
+            return json.dumps([{"text": str(i)} for i in range(20)])
+        monkeypatch.setattr(retriever, "search", fake_search)
+        monkeypatch.setattr(
+            retriever, "rerank",
+            lambda query, candidates, top_k=5, **k: candidates[:top_k]
+        )
+        out = retriever.retrieve_for_chat(
+            "q", top_k=3, rerank_enabled=True, rerank_top_n=20
+        )
+        assert captured["fetch_k"] == 20
+        assert len(out) == 3

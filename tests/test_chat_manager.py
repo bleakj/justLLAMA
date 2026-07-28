@@ -418,6 +418,8 @@ def test_chat_manager_signals(qapp, monkeypatch):
         error_occurred = Signal(str)
         tool_call_detected = Signal(str, str)
         reasoning_chunk_received = Signal(str)
+        telemetry_ready = Signal(dict)
+        rag_context_applied = Signal(int)
 
         def __init__(self, *args, **kwargs):
             super().__init__()
@@ -461,6 +463,8 @@ def test_chat_manager_stop_generation(qapp, monkeypatch):
         error_occurred = Signal(str)
         tool_call_detected = Signal(str, str)
         reasoning_chunk_received = Signal(str)
+        telemetry_ready = Signal(dict)
+        rag_context_applied = Signal(int)
 
         def __init__(self, *args, **kwargs):
             super().__init__()
@@ -565,3 +569,119 @@ def test_chat_runner_model_match(qapp, monkeypatch):
     assert len(errors) == 0
     assert len(chat_calls) == 1, "chat_completion must be called when models match"
     assert len(completed) == 1
+
+
+# ---------------------------------------------------------------------------
+# Test per-response telemetry (WS1)
+# ---------------------------------------------------------------------------
+
+def test_chat_runner_telemetry_from_timings(qapp, monkeypatch):
+    """A final SSE chunk carrying a `timings` block yields full telemetry."""
+    mock_settings = MagicMock()
+    mock_settings.get_int.return_value = 8080
+    monkeypatch.setattr("justllama.server.chat_manager.AppSettings", lambda: mock_settings)
+
+    mock_client = MagicMock(spec=LlamaClient)
+    mock_client.models.return_value = [{"id": "test-model"}]
+    monkeypatch.setattr("justllama.server.chat_manager.LlamaClient", lambda port: mock_client)
+
+    class TimingsResponse:
+        def iter_lines(self):
+            yield b'data: {"choices": [{"delta": {"content": "Hi"}}]}'
+            yield b'data: {"choices": [{"finish_reason": "stop", "delta": {}}], "timings": {"prompt_n": 12, "predicted_n": 142, "predicted_per_second": 78.4, "prompt_ms": 20.0}}'
+            yield b'data: [DONE]'
+
+        def close(self):
+            pass
+
+    mock_client.chat_completion.return_value = TimingsResponse()
+
+    runner = ChatRunner([{"role": "user", "content": "Hi"}], {"model": "test-model"}, mcp_manager=None)
+    telemetry = []
+    completed = []
+    runner.telemetry_ready.connect(telemetry.append)
+    runner.generation_complete.connect(completed.append)
+
+    runner.run()
+
+    assert len(completed) == 1
+    assert len(telemetry) == 1
+    stats = telemetry[0]
+    assert stats["prompt_tokens"] == 12
+    assert stats["predicted_tokens"] == 142
+    assert stats["tps"] == 78.4
+    assert stats["ttft_s"] is not None and stats["ttft_s"] >= 0
+
+
+def test_chat_runner_telemetry_ttft_only_fallback(qapp, monkeypatch):
+    """Without a `timings` block (cloud-routed), only TTFT is reported."""
+    mock_settings = MagicMock()
+    mock_settings.get_int.return_value = 8080
+    monkeypatch.setattr("justllama.server.chat_manager.AppSettings", lambda: mock_settings)
+
+    mock_client = MagicMock(spec=LlamaClient)
+    mock_client.models.return_value = [{"id": "test-model"}]
+    monkeypatch.setattr("justllama.server.chat_manager.LlamaClient", lambda port: mock_client)
+
+    class NoTimingsResponse:
+        def iter_lines(self):
+            yield b'data: {"choices": [{"delta": {"content": "Hello"}}]}'
+            yield b'data: {"choices": [{"delta": {"content": " world"}}]}'
+            yield b'data: [DONE]'
+
+        def close(self):
+            pass
+
+    mock_client.chat_completion.return_value = NoTimingsResponse()
+
+    runner = ChatRunner([{"role": "user", "content": "Hi"}], {"model": "test-model"}, mcp_manager=None)
+    telemetry = []
+    runner.telemetry_ready.connect(telemetry.append)
+
+    runner.run()
+
+    assert len(telemetry) == 1
+    stats = telemetry[0]
+    assert stats["ttft_s"] is not None and stats["ttft_s"] >= 0
+    assert stats["tps"] is None
+    assert stats["prompt_tokens"] is None
+    assert stats["predicted_tokens"] is None
+
+
+# ---------------------------------------------------------------------------
+# Test vision image attachments (WS5)
+# ---------------------------------------------------------------------------
+
+def test_apply_image_attachments_builds_multimodal(qapp, tmp_path):
+    """With attachments, the latest user message becomes a content array."""
+    img = tmp_path / "pic.png"
+    img.write_bytes(b"\x89PNG\r\n\x1a\n fake png bytes")
+
+    messages = [{"role": "user", "content": "describe this"}]
+    params = {"model": "m", "attachments": [str(img)]}
+    runner = ChatRunner(messages, params, mcp_manager=None)
+    runner._apply_image_attachments()
+
+    content = runner.messages[0]["content"]
+    assert isinstance(content, list)
+    assert content[0] == {"type": "text", "text": "describe this"}
+    assert content[1]["type"] == "image_url"
+    assert content[1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+def test_no_attachments_leaves_string_content(qapp):
+    """Without attachments, user content stays a plain string."""
+    messages = [{"role": "user", "content": "hi"}]
+    runner = ChatRunner(messages, {"model": "m"}, mcp_manager=None)
+    runner._apply_image_attachments()
+    assert runner.messages[0]["content"] == "hi"
+
+
+def test_missing_image_file_skipped(qapp):
+    """A non-existent attachment path is skipped; content stays a string."""
+    messages = [{"role": "user", "content": "hi"}]
+    params = {"model": "m", "attachments": ["/does/not/exist.png"]}
+    runner = ChatRunner(messages, params, mcp_manager=None)
+    runner._apply_image_attachments()
+    # Only the (failed) image was offered, so content stays the plain string.
+    assert runner.messages[0]["content"] == "hi"

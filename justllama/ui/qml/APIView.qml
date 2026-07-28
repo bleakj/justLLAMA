@@ -159,12 +159,56 @@ Kirigami.Page {
             }
 
             Label {
-                text: "GET  /v1/models          List loaded models\nGET  /health             Server health status\nGET  /props              Server properties\nGET  /slots              Slot context usage (n_past/n_ctx per slot)\nPOST /v1/chat/completions  Chat completion (streaming supported)\nPOST /v1/completions     Text completion\nPOST /v1/embeddings      Generate embeddings"
+                text: "OpenAI-compatible"
+                font.bold: true
+                font.pointSize: 11
+                color: safeHighlightColor
+            }
+
+            Label {
+                text: "GET  /v1/models              List loaded models\nPOST /v1/chat/completions     Chat completion (streaming, tools, vision)\nPOST /v1/completions          Text completion\nPOST /v1/embeddings           Generate embeddings"
                 font.pointSize: 11
                 font.family: "monospace"
                 color: safeTextColor
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
+            }
+
+            Label {
+                text: "llama.cpp native"
+                font.bold: true
+                font.pointSize: 11
+                color: safeHighlightColor
+            }
+
+            Label {
+                text: "GET  /health                 Server health status\nGET  /props                  Server properties / default params\nGET  /slots                  Slot context usage (n_past/n_ctx per slot)\nGET  /metrics                Prometheus-format metrics\nPOST /completion              Native completion (n_predict, streaming)\nPOST /embedding               Native embeddings\nPOST /tokenize                Text → token ids\nPOST /detokenize              Token ids → text"
+                font.pointSize: 11
+                font.family: "monospace"
+                color: safeTextColor
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
+
+            // curl (native /completion)
+            ConfigSnippet {
+                title: "curl (llama.cpp native /completion)"
+                snippet: "curl " + apiPage.baseUrl + "/completion \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"prompt\": \"Hello!\",\n    \"n_predict\": 128,\n    \"stream\": true\n  }'"
+                onCopy: apiPage.copyToClipboard(snippet)
+            }
+
+            // curl (native /tokenize)
+            ConfigSnippet {
+                title: "curl (llama.cpp native /tokenize)"
+                snippet: "curl " + apiPage.baseUrl + "/tokenize \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"content\": \"Hello world\", \"with_pieces\": true}'"
+                onCopy: apiPage.copyToClipboard(snippet)
+            }
+
+            // curl (native /props)
+            ConfigSnippet {
+                title: "curl (llama.cpp native /props)"
+                snippet: "curl " + apiPage.baseUrl + "/props"
+                onCopy: apiPage.copyToClipboard(snippet)
             }
 
             // Server status

@@ -9,6 +9,32 @@ from PySide6.QtCore import QObject, Signal, Slot
 from justllama.models.metadata import get_model_training_context
 
 
+def _detect_mmproj(model_path: str) -> str:
+    """Return a sibling multimodal projector (``*mmproj*.gguf``) next to the
+    model, or "" if none is found. Enables vision models automatically (WS5).
+    """
+    try:
+        p = Path(model_path)
+        parent = p.parent
+        if not parent.is_dir():
+            return ""
+        # Prefer a projector whose name shares the model's stem, else any.
+        candidates = sorted(parent.glob("*mmproj*.gguf")) + sorted(parent.glob("*.mmproj.gguf"))
+        # De-duplicate while preserving order.
+        seen = set()
+        candidates = [c for c in candidates if not (c in seen or seen.add(c))]
+        if not candidates:
+            return ""
+        stem = p.stem.lower()
+        for c in candidates:
+            if c.stem.lower().replace("mmproj", "").strip("-._") and stem[:6] in c.stem.lower():
+                return str(c)
+        return str(candidates[0])
+    except Exception:
+        return ""
+
+
+
 def _get_total_vram_gb() -> float:
     """Get total GPU VRAM in GB via nvidia-smi. Returns 0 if unavailable."""
     try:
@@ -306,12 +332,20 @@ class ModelProfiles(QObject):
             "draft_min": global_settings.get_int("server/draft_min") if global_settings else 0,
             "jinja": True,  # Enable Jinja by default to read chat template from GGUF
             "chat_template": "",
+            "mmproj": global_settings.get_string("server/mmproj") if global_settings else "",
             "extra_args": [],
         }
         profile = self.get_model_profile(model_path)
         for k, v in profile.items():
             if v is not None and v != "":
                 eff[k] = v
+
+        # Vision (WS5): if no projector is configured, auto-detect a sibling
+        # *mmproj*.gguf next to the model so multimodal models work out of box.
+        if not eff.get("mmproj"):
+            detected = _detect_mmproj(model_path)
+            if detected:
+                eff["mmproj"] = detected
 
         # Smart default: if ctx_size is 0 (auto), read from GGUF metadata
         # and apply a safe fraction (75%) to prevent OOM with KV cache + MTP.

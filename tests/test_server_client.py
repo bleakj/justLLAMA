@@ -196,3 +196,53 @@ def test_set_base_url():
     client.set_base_url("http://10.0.0.1", 9090)
 
     assert client.base_url == "http://10.0.0.1:9090"
+
+
+# ---------------------------------------------------------------------------
+# llama.cpp-native endpoint wrappers (WS6)
+# ---------------------------------------------------------------------------
+
+def test_tokenize_hits_native_path():
+    client = _make_client()
+    client._session.post.return_value = MagicMock(
+        json=MagicMock(return_value={"tokens": [1, 2, 3]}),
+        raise_for_status=MagicMock(),
+    )
+
+    result = client.tokenize("hello", with_pieces=True)
+
+    assert result == {"tokens": [1, 2, 3]}
+    args, kwargs = client._session.post.call_args
+    assert args[0] == "http://localhost:8080/tokenize"
+    assert kwargs["json"]["content"] == "hello"
+    assert kwargs["json"]["with_pieces"] is True
+
+
+def test_detokenize_hits_native_path():
+    client = _make_client()
+    client._session.post.return_value = MagicMock(
+        json=MagicMock(return_value={"content": "hello"}),
+        raise_for_status=MagicMock(),
+    )
+
+    result = client.detokenize([1, 2, 3])
+
+    assert result == {"content": "hello"}
+    args, kwargs = client._session.post.call_args
+    assert args[0] == "http://localhost:8080/detokenize"
+    assert kwargs["json"] == {"tokens": [1, 2, 3]}
+
+
+def test_metrics_returns_text():
+    client = _make_client()
+    client._session.get.return_value = MagicMock(
+        text="# HELP llamacpp:tokens\n",
+        raise_for_status=MagicMock(),
+    )
+
+    result = client.metrics()
+
+    assert "llamacpp" in result
+    client._session.get.assert_called_once_with(
+        "http://localhost:8080/metrics", timeout=10
+    )

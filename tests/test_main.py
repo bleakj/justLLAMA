@@ -566,3 +566,35 @@ def test_chatview_reasoning_bindings_no_undefined_error(qapp, tmp_path, monkeypa
         if "Unable to assign [undefined]" in w.toString()
     ]
     assert not undefined_errors, f"Unexpected [undefined] errors: {undefined_errors}"
+
+
+def test_settings_file_dialog_preserves_absolute_path(qapp, monkeypatch):
+    """Regression guard: the model file dialog must strip the file:// scheme
+    while preserving the leading slash of an absolute path.
+
+    Previously ``slice(8)`` on a ``file:///home/x`` URL dropped the leading
+    slash, producing a relative path (``home/x``) that failed to resolve.
+    """
+    from PySide6.QtQml import QQmlEngine, QQmlComponent, QQmlExpression
+    from PySide6.QtCore import QUrl, QObject
+
+    engine = QQmlEngine()
+    component = QQmlComponent(engine)
+    component.setData(b"import QtQuick\nItem {}", QUrl())
+    assert component.isReady(), f"QML component failed: {component.errors()}"
+    scope = component.create()
+    assert scope is not None
+
+    # Mirror the exact expression used in SettingsView modelFileDialog.onAccepted.
+    expr_src = (
+        'decodeURIComponent("file:///home/dsb/models/model.gguf"'
+        '.replace("file://", ""))'
+    )
+    expression = QQmlExpression(engine.rootContext(), scope, expr_src)
+    res = expression.evaluate()
+    if isinstance(res, tuple):
+        res = res[0]
+    assert not expression.hasError(), expression.error().toString()
+    assert res == "/home/dsb/models/model.gguf", (
+        f"absolute path must keep its leading slash, got {res!r}"
+    )

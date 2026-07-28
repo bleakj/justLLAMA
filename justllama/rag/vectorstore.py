@@ -18,7 +18,8 @@ class VectorStore(QObject):
     status_changed = Signal(str)
 
     def __init__(self, store_path: str = "", collection_name: str = "justllama",
-                 chunk_size: int = 512, chunk_overlap: int = 50, parent=None):
+                 chunk_size: int = 512, chunk_overlap: int = 50, settings=None,
+                 parent=None):
         super().__init__(parent)
         self._store_path = store_path or str(
             Path.home() / ".local" / "share" / "justllama" / "vectordb"
@@ -26,9 +27,24 @@ class VectorStore(QObject):
         self._collection_name = collection_name
         self._chunk_size = chunk_size
         self._chunk_overlap = chunk_overlap
+        self._settings = settings
         self._client = None
         self._collection = None
         self._retriever = None
+
+    def _get_embedder(self):
+        """Return a CloudEmbedder if cloud embeddings are enabled/valid, else None.
+
+        Any misconfiguration returns None so the caller falls back to the
+        default local (Chroma) embedding path.
+        """
+        if self._settings is None:
+            return None
+        try:
+            from justllama.rag.embeddings import CloudEmbedder
+            return CloudEmbedder.from_settings(self._settings)
+        except Exception:
+            return None
 
     def set_retriever(self, retriever) -> None:
         """Link a Retriever so its BM25 keyword index stays in sync with
@@ -92,11 +108,24 @@ class VectorStore(QObject):
                     meta[k] = str(v)
             metadatas.append(meta)
 
-        self._collection.add(
-            ids=ids,
-            documents=documents,
-            metadatas=metadatas,
-        )
+        add_kwargs = {"ids": ids, "documents": documents, "metadatas": metadatas}
+        # Cloud embeddings (WS2): compute vectors explicitly so Chroma stores
+        # them instead of using its default local embedder. On any failure we
+        # drop back to the local default path silently.
+        embedder = self._get_embedder()
+        if embedder is not None:
+            try:
+                vectors = embedder.embed(documents)
+                if vectors and len(vectors) == len(documents):
+                    add_kwargs["embeddings"] = vectors
+                else:
+                    self.status_changed.emit(
+                        "Cloud embedding returned unexpected result; using local"
+                    )
+            except Exception as e:
+                self.status_changed.emit(f"Cloud embedding failed, using local: {e}")
+
+        self._collection.add(**add_kwargs)
 
         # Keep the retriever's keyword (BM25) fallback index in sync with the
         # embeddings so hybrid search still works if a vector query fails.
@@ -182,10 +211,26 @@ class VectorStore(QObject):
         if self._collection.count() == 0:
             return "[]"
 
-        results = self._collection.query(
-            query_texts=[query_text],
-            n_results=min(n_results, self._collection.count()),
-        )
+        query_kwargs = {"n_results": min(n_results, self._collection.count())}
+        # Cloud embeddings (WS2): embed the query with the same provider used
+        # for ingestion so the vector spaces match. Fall back to Chroma's
+        # local query_texts path on any failure.
+        used_cloud = False
+        embedder = self._get_embedder()
+        if embedder is not None:
+            try:
+                qvec = embedder.embed([query_text])
+                if qvec:
+                    query_kwargs["query_embeddings"] = qvec
+                    used_cloud = True
+            except Exception as e:
+                self.status_changed.emit(
+                    f"Cloud query embedding failed, using local: {e}"
+                )
+        if not used_cloud:
+            query_kwargs["query_texts"] = [query_text]
+
+        results = self._collection.query(**query_kwargs)
 
         output = []
         for i in range(len(results["ids"][0])):

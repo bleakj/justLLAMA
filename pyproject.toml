@@ -28,6 +28,10 @@ rag = [
 voice = [
     "pywhispercpp>=1.5.0",
 ]
+tts = [
+    "kokoro-onnx>=0.3.0",
+    "onnxruntime>=1.16",
+]
 dev = [
     "pytest>=7.0",
     "pytest-mock>=3.10",

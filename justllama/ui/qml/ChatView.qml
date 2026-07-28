@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
+import QtQuick.Dialogs
 import org.kde.kirigami as Kirigami
 
 Kirigami.Page {
@@ -28,6 +29,14 @@ Kirigami.Page {
     property int originalMessagesCount: 0
     property string assistantName: "Assistant"
     property var pendingOperations: []
+    // Most recent per-response telemetry ({ttft_s, tps, prompt_tokens,
+    // predicted_tokens}); attached to the assistant message on completion.
+    property var pendingTelemetry: null
+    // Per-session "Read aloud": auto-speak completed assistant messages (WS4).
+    // Only effective when TTS is enabled in Settings (chat/tts_enabled).
+    property bool readAloud: false
+    // Local image paths attached to the next outgoing message (WS5 vision).
+    property var pendingAttachments: []
     property bool showTerminal: false
     readonly property color modeAccentColor: {
         switch (modeSelector.currentIndex) {
@@ -181,6 +190,13 @@ Kirigami.Page {
         }
     }
     Connections {
+        target: ttsManager
+        ignoreUnknownSignals: true
+        function onError_occurred(error) {
+            toast.show(error, "error")
+        }
+    }
+    Connections {
         target: chatManager
         ignoreUnknownSignals: true
         function onChunk_received(chunk) {
@@ -196,6 +212,15 @@ Kirigami.Page {
             if (!streamingReasoningToggle.checked) {
                 streamingReasoningToggle.checked = true
             }
+        }
+        function onTelemetry_ready(stats) {
+            // Stored here; attached to the assistant message when generation
+            // completes (telemetry_ready is emitted just before it).
+            chatPage.pendingTelemetry = stats
+        }
+        function onRag_context_applied(n) {
+            // ChatRunner injected RAG context off the UI thread; reflect it.
+            ragIndicator.visible = n > 0
         }
         function onGeneration_complete(updatedHistory) {
             isGenerating = false
@@ -227,9 +252,16 @@ Kirigami.Page {
                 if (finalReasoning.length > 0) {
                     assistantMsg.reasoning_content = finalReasoning
                 }
+                if (chatPage.pendingTelemetry) {
+                    assistantMsg.telemetry = chatPage.pendingTelemetry
+                }
                 messageHistory.push(assistantMsg)
                 messageHistoryChanged()
+                if (chatPage.readAloud && ttsManager && ttsManager.enabled) {
+                    ttsManager.speak(finalContent)
+                }
             }
+            chatPage.pendingTelemetry = null
         }
         function onError_occurred(msg) {
             isGenerating = false
@@ -411,6 +443,17 @@ Kirigami.Page {
                                     color: modelData.role === "user" ? chatPage.safeHighlightTextColor : chatPage.safeTextColor
                                 }
 
+                                // Per-response telemetry footer (WS1)
+                                Label {
+                                    property string telemetryText: modelData.telemetry ? chatPage.formatTelemetry(modelData.telemetry) : ""
+                                    visible: telemetryText.length > 0
+                                    text: telemetryText
+                                    font.family: "monospace"
+                                    font.pointSize: 8
+                                    color: chatPage.safeDisabledColor
+                                    Layout.fillWidth: true
+                                }
+
                                 RowLayout {
                                     Layout.topMargin: Kirigami.Units.smallSpacing
                                     Button {
@@ -420,6 +463,18 @@ Kirigami.Page {
                                         font.family: "monospace"
                                         font.pointSize: 9
                                         onClicked: chatPage.copyMessage(modelData.content)
+                                    }
+                                    Button {
+                                        text: "Speak"
+                                        flat: true
+                                        icon.name: "audio-volume-high"
+                                        font.family: "monospace"
+                                        font.pointSize: 9
+                                        visible: ttsManager && ttsManager.enabled
+                                                 && modelData.role !== "user"
+                                                 && modelData.role !== "image"
+                                                 && modelData.role !== "video"
+                                        onClicked: ttsManager.speak(modelData.content)
                                     }
                                     Item { Layout.fillWidth: true }
                                 }
@@ -481,6 +536,18 @@ Kirigami.Page {
                 }
 
                 Item { Layout.fillWidth: true }
+
+                // Per-session "Read aloud" toggle (WS4); only when TTS enabled.
+                CheckBox {
+                    text: "Read aloud"
+                    font.pointSize: 9
+                    visible: ttsManager && ttsManager.enabled
+                    checked: chatPage.readAloud
+                    onToggled: {
+                        chatPage.readAloud = checked
+                        if (!checked) ttsManager.stop()
+                    }
+                }
             }
 
             // Collapsible generation settings
@@ -862,15 +929,50 @@ Kirigami.Page {
                     }
 
                     Button {
+                        id: attachButton
+                        visible: appSettings.get_string("server/mmproj").length > 0
+                                 || chatPage.pendingAttachments.length > 0
+                        enabled: !isGenerating
+                        icon.name: "insert-image"
+                        text: chatPage.pendingAttachments.length > 0
+                               ? String(chatPage.pendingAttachments.length) : ""
+                        ToolTip.visible: hovered
+                        ToolTip.text: chatPage.pendingAttachments.length > 0
+                            ? "Attached " + chatPage.pendingAttachments.length + " image(s) — click to add more, long-press Send clears"
+                            : "Attach image(s) for vision models"
+                        onClicked: imageAttachDialog.open()
+                        onPressAndHold: {
+                            chatPage.pendingAttachments = []
+                            toast.show("Cleared attached images", "info")
+                        }
+                    }
+
+                    Button {
                         text: isGenerating ? "Stop" : "Send"
                         icon.name: isGenerating ? "media-playback-stop" : "document-send"
                         enabled: inputField.text.length > 0 || isGenerating
+                                 || chatPage.pendingAttachments.length > 0
                         onClicked: {
                             if (isGenerating) { stopGeneration() }
                             else { sendMessage() }
                         }
                     }
                 }
+            }
+        }
+
+        FileDialog {
+            id: imageAttachDialog
+            title: "Attach Image(s)"
+            nameFilters: ["Images (*.png *.jpg *.jpeg *.webp *.gif)", "All files (*)"]
+            fileMode: FileDialog.OpenFiles
+            onAccepted: {
+                var paths = chatPage.pendingAttachments.slice()
+                for (var i = 0; i < selectedFiles.length; i++) {
+                    paths.push(selectedFiles[i].toString().replace("file://", ""))
+                }
+                chatPage.pendingAttachments = paths
+                toast.show("Attached " + selectedFiles.length + " image(s)", "info")
             }
         }
 
@@ -1387,22 +1489,11 @@ Kirigami.Page {
         }
         var messages = []
         
-        // Try to retrieve RAG context for the user's question (only if enabled)
+        // RAG retrieval (+ optional LLM rerank) now runs inside ChatRunner on
+        // its worker thread so the UI never blocks on the network call. The
+        // ragIndicator is toggled by chatManager.onRag_context_applied.
         if (appSettings.get_bool("rag/enabled")) {
             ragIndicator.visible = false
-            var ragResults = retriever.search(text, 3)
-            if (ragResults) {
-                try {
-                    var ragData = JSON.parse(ragResults)
-                    if (ragData.length > 0) {
-                        var ragContext = ragData.map(function(r) { return r.text }).join("\n\n")
-                        messages.push({"role": "system", "content": "Relevant context:\n" + ragContext})
-                        ragIndicator.visible = true
-                    }
-                } catch (e) {
-                    toast.show("RAG search failed: " + e.message, "error")
-                }
-            }
         }
         
         var sysPrompt = memoryManager.get_system_prompt_addition()
@@ -1460,6 +1551,12 @@ Kirigami.Page {
             "max_tokens": chatPage.genMaxTokens,
             "mode": modeSelector.currentIndex
         }
+        // Vision (WS5): forward any attached image paths; ChatRunner encodes
+        // them into the multimodal message content off the UI thread.
+        if (chatPage.pendingAttachments.length > 0) {
+            params.attachments = chatPage.pendingAttachments
+            chatPage.pendingAttachments = []
+        }
         chatManager.send_message(messages, params)
     }
     function stopGeneration() {
@@ -1500,6 +1597,23 @@ Kirigami.Page {
         hiddenCopyField.selectAll()
         hiddenCopyField.copy()
         toast.show("Copied!", "success")
+    }
+    // Format per-response telemetry into a compact footer line, e.g.
+    // "142 tok · 78.4 tok/s · TTFT 0.05s". Fields absent (cloud-routed
+    // responses without a timings block) are omitted; TTFT-only is valid.
+    function formatTelemetry(t) {
+        if (!t) return ""
+        var parts = []
+        if (t.predicted_tokens !== undefined && t.predicted_tokens !== null) {
+            parts.push(t.predicted_tokens + " tok")
+        }
+        if (t.tps !== undefined && t.tps !== null) {
+            parts.push(t.tps.toFixed(1) + " tok/s")
+        }
+        if (t.ttft_s !== undefined && t.ttft_s !== null) {
+            parts.push("TTFT " + t.ttft_s.toFixed(2) + "s")
+        }
+        return parts.join("  ·  ")
     }
     TextField {
         id: hiddenCopyField

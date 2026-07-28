@@ -27,6 +27,7 @@ from justllama.server.build import BuildManager
 from justllama.server.imagegen import ImageGenManager
 from justllama.server.videogen import VideoGenManager
 from justllama.voice.manager import VoiceInputManager
+from justllama.voice.tts_manager import TTSManager
 from justllama.server.external_models import ExternalModelsManager
 from justllama.server.mcp import McpManager
 from justllama.server.chat_manager import ChatManager
@@ -61,6 +62,7 @@ def main():
         settings.get_string("rag/vectorstore_path"),
         chunk_size=settings.get_int("rag/chunk_size"),
         chunk_overlap=settings.get_int("rag/chunk_overlap"),
+        settings=settings,
     )
     retriever = Retriever(vector_store)
     vector_store.set_retriever(retriever)  # keep BM25 fallback in sync with ingestion
@@ -80,9 +82,10 @@ def main():
     from justllama.server.generation_registry import register_managers
     register_managers(imagegen_manager, videogen_manager)
     voice_input_manager = VoiceInputManager(settings)
+    tts_manager = TTSManager(settings)
     mcp_manager = McpManager()
     skills_manager = SkillsManager()
-    chat_manager = ChatManager(mcp_manager, skills_manager)
+    chat_manager = ChatManager(mcp_manager, skills_manager, retriever=retriever)
 
     external_models = ExternalModelsManager(settings)
 
@@ -104,6 +107,7 @@ def main():
         server_manager.stop()
         long_term.close()
         voice_input_manager.unload_model()
+        tts_manager.unload_model()
         mcp_manager.shutdown()
         skills_manager.shutdown()
         terminal_manager.shutdown()
@@ -132,6 +136,7 @@ def main():
     ctx.setContextProperty("imageGenManager", imagegen_manager)
     ctx.setContextProperty("videoGenManager", videogen_manager)
     ctx.setContextProperty("voiceInputManager", voice_input_manager)
+    ctx.setContextProperty("ttsManager", tts_manager)
     ctx.setContextProperty("mcpManager", mcp_manager)
     ctx.setContextProperty("skillsManager", skills_manager)
     ctx.setContextProperty("chatManager", chat_manager)
