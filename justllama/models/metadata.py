@@ -8,6 +8,7 @@ GGUF format reference: https://github.com/ggml-org/ggml/blob/master/docs/gguf.md
 """
 
 import struct
+from functools import lru_cache
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Slot
@@ -88,6 +89,8 @@ def _read_value(f, value_type: int):
     raise ValueError(f"Unknown metadata value type: {value_type}")
 
 
+# ⚡ Bolt: Cache GGUF metadata parsing to prevent repeated disk I/O during UI refresh loops
+@lru_cache(maxsize=128)
 def read_gguf_metadata(model_path: str, max_keys: int = 500) -> dict:
     """Read metadata from a GGUF file header.
 
