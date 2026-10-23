@@ -11,6 +11,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.types import Root, ListRootsResult
 from mcp.client.stdio import stdio_client
 from justllama.config.settings import AppSettings
+from justllama.config.env import _PROVIDER_ENV
 
 
 class McpManager(QObject):
@@ -211,6 +212,10 @@ class McpManager(QObject):
 
                     # Merge os.environ with custom environment variables
                     env_params = os.environ.copy()
+                    # 🛡️ Sentinel: Remove sensitive API keys to prevent environment leakage
+                    for provider_key in _PROVIDER_ENV.values():
+                        env_params.pop(provider_key, None)
+
                     custom_env = server_envs.get(server_str)
                     if custom_env:
                         for k, v in custom_env.items():

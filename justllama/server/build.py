@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Slot
+
+from justllama.config.env import _PROVIDER_ENV
 
 
 class BuildManager(QObject):
@@ -58,9 +61,14 @@ class BuildManager(QObject):
     def run_command(self, command: str) -> str:
         """Run a shell command in work_dir. Returns stdout+stderr or error."""
         try:
+            env = os.environ.copy()
+            # 🛡️ Sentinel: Remove sensitive API keys to prevent environment leakage
+            for provider_key in _PROVIDER_ENV.values():
+                env.pop(provider_key, None)
+
             result = subprocess.run(
                 command, shell=True, capture_output=True, text=True,
-                timeout=60, cwd=str(self._work_dir)
+                timeout=60, cwd=str(self._work_dir), env=env
             )
             output = result.stdout
             if result.stderr:
