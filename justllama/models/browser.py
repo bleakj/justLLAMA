@@ -3,6 +3,7 @@
 import os
 import subprocess
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal, Slot, Property
@@ -39,6 +40,30 @@ class ModelInfo:
         }
 
 
+@lru_cache(maxsize=1)
+def _get_safe_ram_gb() -> float:
+    """Get system RAM in GB minus an 8GB safety buffer. Cached to prevent repeated OS queries."""
+    try:
+        total_ram = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES') / (1024**3)
+    except (AttributeError, ValueError):
+        total_ram = 0.0
+    return max(0.0, total_ram - 8.0)
+
+
+@lru_cache(maxsize=1)
+def _get_safe_vram_gb() -> float:
+    """Get GPU VRAM in GB via nvidia-smi minus a 1.5GB safety buffer. Cached to prevent blocking UI loops."""
+    try:
+        result = subprocess.run(
+            ['nvidia-smi', '--query-gpu=memory.total', '--format=csv,noheader,nounits'],
+            capture_output=True, text=True, check=True, timeout=5
+        )
+        total_vram = int(result.stdout.strip().split('\n')[0]) / 1024.0
+    except Exception:
+        total_vram = 0.0
+    return max(0.0, total_vram - 1.5)
+
+
 class ModelBrowser(QObject):
     """Browses local GGUF model files.
 
@@ -50,23 +75,11 @@ class ModelBrowser(QObject):
 
     @Property(float, constant=True)
     def safe_ram_gb(self) -> float:
-        try:
-            total_ram = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES') / (1024**3)
-        except (AttributeError, ValueError):
-            total_ram = 0.0
-        return max(0.0, total_ram - 8.0)  # 8 GB system buffer
+        return _get_safe_ram_gb()
 
     @Property(float, constant=True)
     def safe_vram_gb(self) -> float:
-        try:
-            result = subprocess.run(
-                ['nvidia-smi', '--query-gpu=memory.total', '--format=csv,noheader,nounits'],
-                capture_output=True, text=True, check=True, timeout=5
-            )
-            total_vram = int(result.stdout.strip().split('\n')[0]) / 1024.0
-        except Exception:
-            total_vram = 0.0
-        return max(0.0, total_vram - 1.5)  # 1.5 GB VRAM buffer
+        return _get_safe_vram_gb()
 
     def __init__(self, models_dir: str = "", parent=None):
         super().__init__(parent)

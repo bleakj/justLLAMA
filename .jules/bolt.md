@@ -1,3 +1,7 @@
 ## 2024-10-21 - Caching Repeated Disk Reads in UI Loops
 **Learning:** During UI refreshes, Qt/QML loops often invoke Python slots repeatedly for the same item (e.g. querying metadata for models listed in a UI list view). In `justllama`, `get_model_info` is called in a loop for each model every time the model browser scans or refreshes. Reading and parsing the binary structure of a large GGUF file from disk per UI cycle creates unnecessary disk I/O and CPU overhead.
 **Action:** Use `functools.lru_cache` to cache deterministic functions that parse metadata from disk when the file is not expected to change continuously. This simple memory-cache mechanism avoids hitting the disk or re-parsing the header on subsequent UI interactions, drastically improving the UI responsiveness.
+
+## 2024-10-23 - Caching Synchronous Subprocess Calls in UI Loops
+**Learning:** QML properties in `ModelBrowser` (like `safe_vram_gb`) are evaluated repeatedly within the UI render cycle for each item in a ListView. Invoking `subprocess.run` to call `nvidia-smi` on every evaluation is a massive performance bottleneck, blocking the main thread and resulting in 100+ slow queries just to render the list.
+**Action:** Always cache or memoize immutable hardware capability lookups (like system RAM or GPU VRAM queries) when they are exposed to the UI layer via Qt Properties. Use `@lru_cache` to execute them exactly once and cache the result indefinitely, eliminating the redundant OS overhead.
