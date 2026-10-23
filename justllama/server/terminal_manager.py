@@ -5,6 +5,7 @@ import subprocess
 import threading
 import queue
 from PySide6.QtCore import QObject, Signal, Slot
+from justllama.config.env import _PROVIDER_ENV
 
 
 class TerminalManager(QObject):
@@ -49,6 +50,10 @@ class TerminalManager(QObject):
             return
 
         env = os.environ.copy()
+        # 🛡️ Sentinel: Remove sensitive API keys to prevent environment leakage
+        # to the subprocess, which could be exposed to malicious LLMs.
+        for provider_key in _PROVIDER_ENV.values():
+            env.pop(provider_key, None)
         env["TERM"] = "dumb"
         env["PS1"] = "justllama-pty$ "
 
