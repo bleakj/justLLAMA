@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from functools import lru_cache
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal, Slot
@@ -47,6 +48,7 @@ def _detect_mmproj(model_path: str) -> str:
 
 
 
+@lru_cache(maxsize=1)
 def _get_total_vram_gb() -> float:
     """Get total GPU VRAM in GB via nvidia-smi. Returns 0 if unavailable."""
     try:
