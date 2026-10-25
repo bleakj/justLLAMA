@@ -5,11 +5,13 @@ Allows the agent to search for library IDs and query up-to-date documentation.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from typing import Callable
 
 from justllama.server.skills.base import AgentSkill
+from justllama.config.env import _PROVIDER_ENV
 
 
 class Context7LibrarySkill(AgentSkill):
@@ -57,7 +59,11 @@ class Context7LibrarySkill(AgentSkill):
 
         cmd = ["npx", "ctx7@latest", "library", name, query]
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            env = os.environ.copy()
+            # 🛡️ Sentinel: Remove sensitive API keys to prevent environment leakage
+            for provider_key in _PROVIDER_ENV.values():
+                env.pop(provider_key, None)
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True, env=env)
             return result.stdout.strip() or "No results found."
         except subprocess.CalledProcessError as e:
             return f"Error executing context7 library lookup:\n{e.stderr}"
@@ -110,7 +116,11 @@ class Context7DocsSkill(AgentSkill):
 
         cmd = ["npx", "ctx7@latest", "docs", library_id, query]
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            env = os.environ.copy()
+            # 🛡️ Sentinel: Remove sensitive API keys to prevent environment leakage
+            for provider_key in _PROVIDER_ENV.values():
+                env.pop(provider_key, None)
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True, env=env)
             return result.stdout.strip() or "No documentation found for this query."
         except subprocess.CalledProcessError as e:
             return f"Error fetching docs:\n{e.stderr}"

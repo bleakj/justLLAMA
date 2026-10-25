@@ -14,14 +14,16 @@ def test_context7_library_success():
     mock_run.return_value.stdout = "1. Title: React\nContext7-compatible library ID: /react/react"
 
     with patch("shutil.which", return_value="/usr/bin/npx"), \
-         patch("subprocess.run", mock_run):
+         patch("subprocess.run", mock_run), \
+         patch("os.environ.copy", return_value={}):
         res = skill.execute({"name": "react", "query": "useEffect"})
         assert "/react/react" in res
         mock_run.assert_called_once_with(
             ["npx", "ctx7@latest", "library", "react", "useEffect"],
             capture_output=True,
             text=True,
-            check=True
+            check=True,
+            env={}
         )
 
 
@@ -58,14 +60,16 @@ def test_context7_docs_success():
     mock_run.return_value.stdout = "useEffect: Performs side effects"
 
     with patch("shutil.which", return_value="/usr/bin/npx"), \
-         patch("subprocess.run", mock_run):
+         patch("subprocess.run", mock_run), \
+         patch("os.environ.copy", return_value={}):
         res = skill.execute({"library_id": "/react/react", "query": "useEffect cleanup"})
         assert "side effects" in res
         mock_run.assert_called_once_with(
             ["npx", "ctx7@latest", "docs", "/react/react", "useEffect cleanup"],
             capture_output=True,
             text=True,
-            check=True
+            check=True,
+            env={}
         )
 
 
