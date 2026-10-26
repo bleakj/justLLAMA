@@ -12,6 +12,7 @@ from PySide6.QtCore import QObject, QThread, Signal, Slot
 
 from justllama.server.config import ServerConfig
 from justllama.models.profiles import ModelProfiles
+from justllama.config.env import _PROVIDER_ENV
 class _ServerLogReader(QThread):
     """Read stdout/stderr from the subprocess in a background thread."""
 
@@ -176,6 +177,10 @@ class ServerManager(QObject):
         # Set env so shared libs next to the binary are found (CUDA, etc.)
         import os
         env = os.environ.copy()
+        # 🛡️ Sentinel: Remove sensitive API keys to prevent environment leakage
+        for provider_key in _PROVIDER_ENV.values():
+            env.pop(provider_key, None)
+
         bin_dir = str(Path(binary).parent)
         existing = env.get("LD_LIBRARY_PATH", "")
         env["LD_LIBRARY_PATH"] = f"{bin_dir}:{existing}" if existing else bin_dir
