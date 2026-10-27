@@ -519,9 +519,11 @@ def test_mcp_custom_environment_variables(settings, mock_mcp, monkeypatch):
     for k, v in custom_env.items():
         assert passed_env.get(k) == v
 
-    # Verify that existing os.environ keys are still preserved
+    # Verify that existing os.environ keys are still preserved, except for scrubbed provider keys
+    from justllama.config.env import _PROVIDER_ENV
+    scrubbed_keys = set(_PROVIDER_ENV.values())
     for k, v in os.environ.items():
-        if k not in custom_env:
+        if k not in custom_env and k not in scrubbed_keys:
             assert passed_env.get(k) == v
 
     manager.shutdown()

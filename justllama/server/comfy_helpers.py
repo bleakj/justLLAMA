@@ -90,12 +90,21 @@ def launch_comfyui() -> subprocess.Popen | None:
     if not main_py.is_file():
         print(f"ComfyUI not found at {main_py}")
         return None
+
+    env = os.environ.copy()
+    # 🛡️ Sentinel: Remove sensitive API keys to prevent environment leakage
+    # to the ComfyUI subprocess, which may run untrusted custom nodes.
+    from justllama.config.env import _PROVIDER_ENV
+    for provider_key in _PROVIDER_ENV.values():
+        env.pop(provider_key, None)
+
     try:
         proc = subprocess.Popen(
             ["python3", "main.py", "--listen", "127.0.0.1", "--port", str(PORT)],
             cwd=str(COMFYUI_DIR),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            env=env,
         )
         return proc
     except OSError as e:
