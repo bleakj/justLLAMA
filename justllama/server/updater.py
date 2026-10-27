@@ -160,11 +160,19 @@ class Updater(QObject):
         script_path.chmod(0o755)
 
         # Launch installer detached, then quit
+        import os
+        env = os.environ.copy()
+        # 🛡️ Sentinel: Remove sensitive API keys to prevent environment leakage
+        from justllama.config.env import _PROVIDER_ENV
+        for provider_key in _PROVIDER_ENV.values():
+            env.pop(provider_key, None)
+
         subprocess.Popen(
             ["bash", str(script_path)],
             start_new_session=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            env=env,
         )
 
         # Exit the app — the installer will relaunch it
