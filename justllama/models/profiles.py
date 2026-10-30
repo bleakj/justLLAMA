@@ -10,6 +10,7 @@ from PySide6.QtCore import QObject, Signal, Slot
 from justllama.models.metadata import get_model_training_context
 
 
+@lru_cache(maxsize=128)
 def _detect_mmproj(model_path: str) -> str:
     """Return a sibling multimodal projector (``*mmproj*.gguf``) next to the
     model, or "" if none clearly corresponds to it (WS5).
@@ -61,6 +62,7 @@ def _get_total_vram_gb() -> float:
         return 0.0
 
 
+@lru_cache(maxsize=128)
 def _estimate_model_vram_gb(model_path: str) -> float:
     """Estimate model VRAM usage from file size (rough approximation)."""
     try:

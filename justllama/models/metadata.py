@@ -190,6 +190,7 @@ def get_model_training_context(model_path: str) -> int:
     return 0
 
 
+@lru_cache(maxsize=128)
 def get_model_info_summary(model_path: str) -> dict:
     """Get a summary of model information for UI display.
 
