@@ -50,6 +50,77 @@ def _get_safe_ram_gb() -> float:
     return max(0.0, total_ram - 8.0)
 
 
+@lru_cache(maxsize=128)
+def _find_mmproj_cached(model_path: str) -> str:
+    """Find mmproj file for a given model.
+
+    Searches in the same directory as the model file.
+    Returns path to mmproj if found, empty string otherwise.
+
+    Priority:
+    1. Exact match: mmproj-<model-stem>.gguf
+    2. Any mmproj*.gguf in the same directory
+    """
+    if not model_path:
+        return ""
+    model_file = Path(model_path)
+    if not model_file.is_file():
+        return ""
+    model_dir = model_file.parent
+    model_stem = model_file.stem
+
+    # Priority 1: exact match mmproj-<model-stem>.gguf
+    exact = model_dir / f"mmproj-{model_stem}.gguf"
+    if exact.is_file():
+        return str(exact)
+
+    # Priority 2: any mmproj*.gguf in the same directory
+    candidates = sorted(model_dir.glob("mmproj*.gguf"))
+    if candidates:
+        return str(candidates[0])
+
+    return ""
+
+
+@lru_cache(maxsize=128)
+def _find_mtp_draft_cached(model_path: str) -> str:
+    """Find MTP draft model file for a given model.
+
+    Searches in the same directory as the model file.
+    Returns path to MTP draft if found, empty string otherwise.
+
+    Priority:
+    1. Exact match: mtp-<model-stem>.gguf, <model-stem>-mtp.gguf, <model-stem>mtp.gguf
+    2. Any *mtp*.gguf in the same directory
+    3. Any *draft*.gguf in the same directory
+    """
+    if not model_path:
+        return ""
+    model_file = Path(model_path)
+    if not model_file.is_file():
+        return ""
+    model_dir = model_file.parent
+    model_stem = model_file.stem
+
+    # Priority 1: exact match patterns
+    for pattern in [f"mtp-{model_stem}.gguf", f"{model_stem}-mtp.gguf", f"{model_stem}mtp.gguf"]:
+        candidate = model_dir / pattern
+        if candidate.is_file():
+            return str(candidate)
+
+    # Priority 2: any *mtp*.gguf in the same directory
+    mtp_candidates = sorted(model_dir.glob("*mtp*.gguf"))
+    if mtp_candidates:
+        return str(mtp_candidates[0])
+
+    # Priority 3: any *draft*.gguf in the same directory
+    draft_candidates = sorted(model_dir.glob("*draft*.gguf"))
+    if draft_candidates:
+        return str(draft_candidates[0])
+
+    return ""
+
+
 @lru_cache(maxsize=1)
 def _get_safe_vram_gb() -> float:
     """Get GPU VRAM in GB via nvidia-smi minus a 1.5GB safety buffer. Cached to prevent blocking UI loops."""
@@ -98,6 +169,9 @@ class ModelBrowser(QObject):
     @Slot(result=list)
     def scan(self) -> list[dict]:
         """Scan the models directory for .gguf files."""
+        _find_mmproj_cached.cache_clear()
+        _find_mtp_draft_cached.cache_clear()
+
         models = []
         if not self._dir.is_dir():
             self.models_changed.emit(models)
@@ -159,25 +233,7 @@ class ModelBrowser(QObject):
         1. Exact match: mmproj-<model-stem>.gguf
         2. Any mmproj*.gguf in the same directory
         """
-        if not model_path:
-            return ""
-        model_file = Path(model_path)
-        if not model_file.is_file():
-            return ""
-        model_dir = model_file.parent
-        model_stem = model_file.stem
-
-        # Priority 1: exact match mmproj-<model-stem>.gguf
-        exact = model_dir / f"mmproj-{model_stem}.gguf"
-        if exact.is_file():
-            return str(exact)
-
-        # Priority 2: any mmproj*.gguf in the same directory
-        candidates = sorted(model_dir.glob("mmproj*.gguf"))
-        if candidates:
-            return str(candidates[0])
-
-        return ""
+        return _find_mmproj_cached(model_path)
 
     @Slot(str, result=str)
     def find_mtp_draft(self, model_path: str) -> str:
@@ -191,28 +247,4 @@ class ModelBrowser(QObject):
         2. Any *mtp*.gguf in the same directory
         3. Any *draft*.gguf in the same directory
         """
-        if not model_path:
-            return ""
-        model_file = Path(model_path)
-        if not model_file.is_file():
-            return ""
-        model_dir = model_file.parent
-        model_stem = model_file.stem
-
-        # Priority 1: exact match patterns
-        for pattern in [f"mtp-{model_stem}.gguf", f"{model_stem}-mtp.gguf", f"{model_stem}mtp.gguf"]:
-            candidate = model_dir / pattern
-            if candidate.is_file():
-                return str(candidate)
-
-        # Priority 2: any *mtp*.gguf in the same directory
-        mtp_candidates = sorted(model_dir.glob("*mtp*.gguf"))
-        if mtp_candidates:
-            return str(mtp_candidates[0])
-
-        # Priority 3: any *draft*.gguf in the same directory
-        draft_candidates = sorted(model_dir.glob("*draft*.gguf"))
-        if draft_candidates:
-            return str(draft_candidates[0])
-
-        return ""
+        return _find_mtp_draft_cached(model_path)
