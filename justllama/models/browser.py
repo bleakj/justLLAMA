@@ -125,9 +125,15 @@ def _find_mtp_draft_cached(model_path: str) -> str:
 def _get_safe_vram_gb() -> float:
     """Get GPU VRAM in GB via nvidia-smi minus a 1.5GB safety buffer. Cached to prevent blocking UI loops."""
     try:
+        env = os.environ.copy()
+        # 🛡️ Sentinel: Remove sensitive API keys to prevent environment leakage
+        from justllama.config.env import _PROVIDER_ENV
+        for provider_key in _PROVIDER_ENV.values():
+            env.pop(provider_key, None)
+
         result = subprocess.run(
             ['nvidia-smi', '--query-gpu=memory.total', '--format=csv,noheader,nounits'],
-            capture_output=True, text=True, check=True, timeout=5
+            capture_output=True, text=True, check=True, timeout=5, env=env
         )
         total_vram = int(result.stdout.strip().split('\n')[0]) / 1024.0
     except Exception:
