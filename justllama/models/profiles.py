@@ -53,9 +53,16 @@ def _detect_mmproj(model_path: str) -> str:
 def _get_total_vram_gb() -> float:
     """Get total GPU VRAM in GB via nvidia-smi. Returns 0 if unavailable."""
     try:
+        import os
+        env = os.environ.copy()
+        # 🛡️ Sentinel: Remove sensitive API keys to prevent environment leakage
+        from justllama.config.env import _PROVIDER_ENV
+        for provider_key in _PROVIDER_ENV.values():
+            env.pop(provider_key, None)
+
         result = subprocess.run(
             ['nvidia-smi', '--query-gpu=memory.total', '--format=csv,noheader,nounits'],
-            capture_output=True, text=True, check=True, timeout=5
+            capture_output=True, text=True, check=True, timeout=5, env=env
         )
         return int(result.stdout.strip().split('\n')[0]) / 1024.0
     except Exception:

@@ -304,9 +304,14 @@ class ServerManager(QObject):
             # Find PID using the port. fuser is part of psmisc on most
             # distros; we degrade gracefully if it isn't available.
             try:
+                import os
+                env = os.environ.copy()
+                # 🛡️ Sentinel: Remove sensitive API keys to prevent environment leakage
+                for provider_key in _PROVIDER_ENV.values():
+                    env.pop(provider_key, None)
                 out = subprocess.run(
                     ["fuser", str(port) + "/tcp"],
-                    capture_output=True, text=True, timeout=5,
+                    capture_output=True, text=True, timeout=5, env=env
                 )
             except FileNotFoundError:
                 self.log_line.emit(

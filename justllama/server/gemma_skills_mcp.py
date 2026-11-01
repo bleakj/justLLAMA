@@ -7,16 +7,22 @@ def main():
     repo_url = "https://github.com/google-gemma/gemma-skills"
     skills_dir = Path.home() / ".local" / "share" / "justllama" / "gemma-skills"
     
+    env = os.environ.copy()
+    # 🛡️ Sentinel: Remove sensitive API keys to prevent environment leakage
+    from justllama.config.env import _PROVIDER_ENV
+    for provider_key in _PROVIDER_ENV.values():
+        env.pop(provider_key, None)
+
     if not skills_dir.exists():
         skills_dir.parent.mkdir(parents=True, exist_ok=True)
         try:
-            subprocess.run(["git", "clone", repo_url, str(skills_dir)], check=True, capture_output=True)
+            subprocess.run(["git", "clone", repo_url, str(skills_dir)], check=True, capture_output=True, env=env)
         except subprocess.CalledProcessError as e:
             print(f"[Gemma Skills] Failed to clone repo: {e.stderr.decode()}", file=sys.stderr)
             sys.exit(1)
     else:
         try:
-            subprocess.run(["git", "-C", str(skills_dir), "pull"], check=True, capture_output=True)
+            subprocess.run(["git", "-C", str(skills_dir), "pull"], check=True, capture_output=True, env=env)
         except subprocess.CalledProcessError as e:
             print(f"[Gemma Skills] Failed to pull repo: {e.stderr.decode()}", file=sys.stderr)
             # Continue anyway, we might be offline
@@ -25,7 +31,7 @@ def main():
     # Using sys.executable to ensure we use the same environment if needed, but npx is external.
     # Replace the current process with npx.
     try:
-        os.execvp("npx", ["npx", "-y", "@modelcontextprotocol/server-filesystem", str(skills_dir)])
+        os.execvpe("npx", ["npx", "-y", "@modelcontextprotocol/server-filesystem", str(skills_dir)], env)
     except OSError as e:
         print(f"[Gemma Skills] Failed to launch filesystem MCP server: {e}", file=sys.stderr)
         sys.exit(1)
