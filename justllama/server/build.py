@@ -19,11 +19,25 @@ class BuildManager(QObject):
         super().__init__(parent)
         self._work_dir = Path.cwd()  # default; can be overridden
 
+    def _safe_path(self, path: str) -> Path:
+        """Resolve path against work_dir and ensure it does not escape it."""
+        p = Path(path)
+
+        # If the path is absolute, ensure it's still within work_dir
+        if p.is_absolute():
+            resolved = p.resolve()
+        else:
+            resolved = (self._work_dir / p).resolve()
+
+        if not resolved.is_relative_to(self._work_dir):
+            raise ValueError("Path traversal detected")
+        return resolved
+
     @Slot(str, result=str)
     def read_file(self, path: str) -> str:
         """Read a file and return contents, or error message prefixed with 'ERROR:'."""
         try:
-            p = Path(path)
+            p = self._safe_path(path)
             if not p.is_file():
                 return f"ERROR: File not found: {path}"
             return p.read_text(encoding="utf-8")
@@ -34,7 +48,7 @@ class BuildManager(QObject):
     def write_file(self, path: str, content: str) -> str:
         """Create or overwrite a file. Returns 'OK' or 'ERROR: ...'."""
         try:
-            p = Path(path)
+            p = self._safe_path(path)
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(content, encoding="utf-8")
             return "OK"
@@ -45,7 +59,7 @@ class BuildManager(QObject):
     def edit_file(self, path: str, old_text: str, new_text: str) -> str:
         """Find-and-replace in a file. Returns 'OK', 'ERROR: ...', or 'NOT_FOUND'."""
         try:
-            p = Path(path)
+            p = self._safe_path(path)
             if not p.is_file():
                 return f"ERROR: File not found: {path}"
             content = p.read_text(encoding="utf-8")
@@ -84,7 +98,7 @@ class BuildManager(QObject):
     def list_directory(self, path: str) -> str:
         """List a directory. Returns JSON array of names or error."""
         try:
-            p = Path(path)
+            p = self._safe_path(path)
             if not p.is_dir():
                 return f"ERROR: Directory not found: {path}"
             items = [str(e) for e in p.iterdir()]
