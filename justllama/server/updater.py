@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import urllib.request
 import json
+import shlex
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal, Slot, QThread
@@ -200,17 +201,19 @@ class Updater(QObject):
             self.download_error.emit("Download failed")
 
     def _build_install_script(self, python_exe: str = "python3") -> str:
-        tarball = self._download_path
-        work_dir = tarball.parent
-        tag = self._latest_version
+        tarball = shlex.quote(str(self._download_path))
+        work_dir = shlex.quote(str(self._download_path.parent))
+        tag = shlex.quote(self._latest_version)
+        python_exe = shlex.quote(python_exe)
+
         return f"""#!/usr/bin/env bash
 set -euo pipefail
 
-TARBALL="{tarball}"
-WORKDIR="{work_dir}"
-TAG="{tag}"
+TARBALL={tarball}
+WORKDIR={work_dir}
+TAG={tag}
 APP_DIR="$(dirname "$(readlink -f "$0")")/../.."
-PYTHON_EXE="{python_exe}"
+PYTHON_EXE={python_exe}
 
 echo "=== justLLAMA Updater ==="
 echo "Installing llama.cpp $TAG ..."

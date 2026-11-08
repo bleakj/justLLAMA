@@ -18,3 +18,7 @@
 **Vulnerability:** The `BuildManager` class allowed arbitrary file read, write, edit, and listing (path traversal) outside its designated `_work_dir` because it failed to resolve and validate file paths provided via JSON `BUILD_OP` commands.
 **Learning:** When creating filesystem tools for LLM agents, paths must be explicitly bound. Simple string concatenation or `Path()` wrapping is not enough if relative paths like `../` or absolute paths are provided by an untrusted source.
 **Prevention:** Use a safe path resolution helper that employs `Path.resolve()` combined with `Path.is_relative_to(safe_dir)` to guarantee operations cannot escape the sandbox. Reject absolute paths or resolve them safely against the sandbox root.
+## 2024-05-27 - Command Injection in shell script generation
+**Vulnerability:** External input from GitHub API (`tag_name`) was interpolated directly into double quotes in a dynamically generated Bash script without `shlex.quote` in `justllama/server/updater.py`.
+**Learning:** Even if data comes from a trusted external API like GitHub, dynamically building Bash scripts with Python string interpolation is inherently vulnerable to Command Injection if quotes are escaped.
+**Prevention:** Always use `shlex.quote()` on any variable dynamically written into a shell script or passed to `shell=True` subprocess calls. Remove surrounding double quotes when doing so.
