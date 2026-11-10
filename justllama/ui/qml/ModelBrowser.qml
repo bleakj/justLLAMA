@@ -309,28 +309,7 @@ Kirigami.Page {
     }
 
     function refreshModels() {
-        var rawModels = modelBrowser.scan()
-        // Enrich model data with GGUF metadata
-        for (var i = 0; i < rawModels.length; i++) {
-            var m = rawModels[i]
-            try {
-                var info = ggufMetadata.get_model_info(m.path)
-                m.gguf_arch = info.architecture || ""
-                m.gguf_ctx = info.context_length || 0
-                m.gguf_template = info.has_chat_template ? (info.chat_template_name || "detected") : ""
-                m.gguf_layers = info.block_count || 0
-                m.gguf_is_moe = info.is_moe || false
-                m.gguf_expert_count = info.expert_count || 0
-            } catch (e) {
-                m.gguf_arch = ""
-                m.gguf_ctx = 0
-                m.gguf_template = ""
-                m.gguf_layers = 0
-                m.gguf_is_moe = false
-                m.gguf_expert_count = 0
-            }
-        }
-        models = rawModels
+        models = modelBrowser.scan()
     }
 
     property string editingModelPath: ""

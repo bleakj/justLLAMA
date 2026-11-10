@@ -13,3 +13,7 @@
 ## 2024-11-23 - Optimizing Directory Traversals
 **Learning:** During UI refreshes or directory scans, performing multiple `Path.rglob()` passes for different patterns causes redundant filesystem walks, which is slow on large directories. Additionally, calling `Path.resolve()` on every file in the loop forces absolute path resolution and symlink tracing, which is ~10x slower than a simple `Path.stat()`, even if the resolved path isn't strictly needed.
 **Action:** Combine multiple `rglob` patterns into a single pass using a broader glob (e.g. `*.gguf*`) and filter in Python. Remove `Path.resolve()` when checking for file existence/broken symlinks, as `Path.stat()` inherently performs this check much faster.
+
+## 2024-11-23 - Batching QML-to-Python Bridge Calls
+**Learning:** Calling a Python slot repeatedly from a QML JavaScript loop (e.g., fetching metadata for each model in a directory scan) creates massive overhead. This synchronous cross-language bridge context switching causes an "N+1 query problem" equivalent, drastically slowing down UI refreshes.
+**Action:** When working with collections of data in PySide6/QML, batch the data processing on the Python side. Return fully enriched data structures from a single Python method invocation to QML instead of iterating and enriching them in JavaScript.
