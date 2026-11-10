@@ -183,6 +183,13 @@ class ModelBrowser(QObject):
             self.models_changed.emit(models)
             return models
 
+        from justllama.models.metadata import read_gguf_metadata, get_model_info_summary
+
+        # ⚡ Bolt: Clear metadata cache during directory rescan to prevent stale
+        # state lingering in the UI if a model file was changed on disk.
+        read_gguf_metadata.cache_clear()
+        get_model_info_summary.cache_clear()
+
         # ⚡ Bolt: Single pass directory traversal (rglob) instead of double pass
         # for multiple patterns, improving directory scan speed by ~50%.
         for f in sorted(self._dir.rglob("*.gguf*")):
@@ -203,12 +210,33 @@ class ModelBrowser(QObject):
             name = str(rel_path.parent / rel_path.stem) if rel_path.parent.name else rel_path.stem
             if name.endswith(".gguf"):  # For .gguf.part* files
                 name = name[:-5]
-            models.append(ModelInfo(
+
+            model_dict = ModelInfo(
                 name=name,
                 path=str(f),
                 size_bytes=stat.st_size,
                 modified_time=stat.st_mtime,
-            ).to_dict())
+            ).to_dict()
+
+            # ⚡ Bolt: Batch GGUF metadata lookup in Python to eliminate O(N)
+            # QML-to-Python bridge calls during UI refresh
+            try:
+                info = get_model_info_summary(str(f))
+                model_dict["gguf_arch"] = info.get("architecture", "")
+                model_dict["gguf_ctx"] = info.get("context_length", 0)
+                model_dict["gguf_template"] = info.get("chat_template_name", "detected") if info.get("has_chat_template") else ""
+                model_dict["gguf_layers"] = info.get("block_count", 0)
+                model_dict["gguf_is_moe"] = info.get("is_moe", False)
+                model_dict["gguf_expert_count"] = info.get("expert_count", 0)
+            except Exception:
+                model_dict["gguf_arch"] = ""
+                model_dict["gguf_ctx"] = 0
+                model_dict["gguf_template"] = ""
+                model_dict["gguf_layers"] = 0
+                model_dict["gguf_is_moe"] = False
+                model_dict["gguf_expert_count"] = 0
+
+            models.append(model_dict)
 
         self.models_changed.emit(models)
         return models
