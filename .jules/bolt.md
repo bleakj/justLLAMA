@@ -17,3 +17,7 @@
 ## 2024-11-23 - Batching QML-to-Python Bridge Calls
 **Learning:** Calling a Python slot repeatedly from a QML JavaScript loop (e.g., fetching metadata for each model in a directory scan) creates massive overhead. This synchronous cross-language bridge context switching causes an "N+1 query problem" equivalent, drastically slowing down UI refreshes.
 **Action:** When working with collections of data in PySide6/QML, batch the data processing on the Python side. Return fully enriched data structures from a single Python method invocation to QML instead of iterating and enriching them in JavaScript.
+
+## 2024-05-19 - [Directory traversal for latest file]
+**Learning:** `Path.glob` combined with `sorted(..., key=os.path.getmtime)` is significantly slower than iterating through the directory once using `os.scandir` to find the latest file. This is specifically true when dealing with many generated assets, like images in a directory, as it requires constructing the `Path` objects, calling `os.path.getmtime` (which performs a `stat` internally), and sorting.
+**Action:** When searching for the single newest or oldest file by criteria in a flat directory, iterate once with `os.scandir` avoiding `Path` instantiations and unnecessary sorting.
